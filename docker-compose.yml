@@ -1,0 +1,59 @@
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    container_name: cip-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: cip
+      POSTGRES_PASSWORD: cip_dev_password
+      POSTGRES_DB: cip
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cip"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  neo4j:
+    image: neo4j:5-community
+    container_name: cip-neo4j
+    restart: unless-stopped
+    environment:
+      NEO4J_AUTH: neo4j/cip_dev_password
+      NEO4J_PLUGINS: '["apoc"]'
+    ports:
+      - "7474:7474" # browser UI
+      - "7687:7687" # bolt
+    volumes:
+      - neo4j_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:7474 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: cip-api
+    restart: unless-stopped
+    env_file:
+      - ./apps/api/.env
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+    volumes:
+      - ./apps/api:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+volumes:
+  postgres_data:
+  neo4j_data:
