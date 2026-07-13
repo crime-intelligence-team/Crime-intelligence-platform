@@ -1,246 +1,511 @@
 # State Crime Intelligence Platform
 
-A secure, role-based intelligence platform for authorized law-enforcement users to monitor criminal activity, analyze regional trends, explore criminal networks, and support investigation workflows through maps, dashboards, and connected-entity analysis.
+A secure, role-based Crime Intelligence Platform designed for law enforcement agencies to analyze crime data, monitor regional trends, visualize criminal networks, and support investigation workflows through geospatial intelligence, dashboards, and connected-entity analysis.
 
-## Overview
+---
 
-The State Crime Intelligence Platform is being built as a full-stack web application for authorized users such as police officers, detectives, intelligence analysts, supervisors, and administrators. The platform combines geospatial intelligence, district-level dashboards, criminal network analysis, and explainable risk-zone visualization into one operational system.
+# Overview
 
-The first version is scoped to a single state with district-level drill-down. The architecture is being designed so the system can later scale to broader geography and more advanced analytics without requiring a full rewrite.
+The **State Crime Intelligence Platform (CIP)** is a full-stack intelligence system that enables police officers, detectives, intelligence analysts, supervisors, and administrators to make data-driven decisions using centralized crime intelligence.
 
-## Core Modules
+The platform combines:
 
-- Secure login and role-based access control
-- State and district map with multiple visualization modes
-- Regional dashboard for selected districts or state-level summaries
-- Network intelligence page for criminal and gang relationship analysis
-- Explainable zone/risk analysis
-- Audit logging and governance controls
-- Case workspace for saving investigation context
+- Geospatial crime visualization
+- District-level intelligence dashboards
+- Criminal network analysis
+- Explainable zone risk scoring
+- Investigation case management
+- Secure access control and governance
+- AI-assisted analytics
 
-## Goals
+The first release targets a **single-state deployment** with district-level intelligence while maintaining an architecture that can scale nationally.
 
-- Provide a centralized intelligence workspace for authorized law-enforcement use
-- Improve situational awareness through maps and dashboards
-- Help investigators identify criminal, gang, and incident connections
-- Support explainable risk-based regional monitoring
-- Maintain secure access, auditability, and role-based data visibility
+---
 
-## Tech Stack
+# Technology Stack
 
-### Frontend
-- React
-- Vite
-- TypeScript
-- React Router
-- Axios
-- Leaflet
+| Layer               | Technology                                             |
+| ------------------- | ------------------------------------------------------ |
+| Frontend            | React + TypeScript + Leaflet + Cytoscape.js + Recharts |
+| Backend API         | Python FastAPI                                         |
+| Relational Database | PostgreSQL + PostGIS                                   |
+| Graph Database      | Neo4j                                                  |
+| Analytics           | Python + Pandas + NumPy + Scikit-learn                 |
+| ETL Pipeline        | Python Data Pipelines                                  |
+| Authentication      | JWT + Role-Based Access Control (RBAC)                 |
+| ORM                 | SQLAlchemy                                             |
+| Validation          | Pydantic                                               |
+| Database Migration  | Alembic                                                |
+| Containerization    | Docker & Docker Compose                                |
 
-### Backend
-- NestJS
-- TypeScript
-- JWT Authentication
-- Role-Based Access Control (RBAC)
+---
 
-### Database
-- PostgreSQL
-- PostGIS
-
-### Analytics
-- Python service / scheduled jobs for risk scoring and intelligence analytics
-
-### Repository Structure
-- Monorepo with shared packages and app separation
-- pnpm workspaces
-
-## Repository Structure
+# System Architecture
 
 ```text
-.
+                        React + TypeScript
+                                │
+                                │ REST API
+                                ▼
+                    FastAPI Backend (Python)
+                                │
+          ┌─────────────────────┴─────────────────────┐
+          │                                           │
+          ▼                                           ▼
+ PostgreSQL + PostGIS                          Neo4j Graph DB
+(Relational + Spatial)                     (Relationship Analysis)
+          │                                           │
+          └─────────────────────┬─────────────────────┘
+                                │
+                                ▼
+                 Analytics & ETL Services (Python)
+        Pandas • NumPy • Scikit-learn • Data Pipelines
+```
+
+---
+
+# Core Features
+
+## Authentication & Authorization
+
+- Secure Login
+- JWT Authentication
+- Role-Based Access Control (RBAC)
+- Multi-Factor Authentication (Planned)
+- Session Management
+- Audit Logging
+
+---
+
+## Crime Dashboard
+
+- State Overview
+- District Overview
+- Crime Trends
+- Crime Categories
+- KPI Cards
+- Alerts
+- Hotspot Analysis
+
+---
+
+## Geospatial Intelligence
+
+- Interactive Maps
+- District Boundaries
+- Zone Risk Visualization
+- Crime Density Analysis
+- Explainable Risk Scoring
+
+---
+
+## Criminal Network Analysis
+
+- Criminal Relationship Graph
+- Gang Connections
+- Phone & Device Links
+- Vehicle Relationships
+- Path Discovery
+- Evidence Connections
+
+Powered by **Neo4j** and **Cytoscape.js**.
+
+---
+
+## Case Management
+
+- Case Creation
+- Investigation Notes
+- Attachments
+- Timeline
+- Export Reports
+
+---
+
+## Governance & Compliance
+
+- Access Exception Requests
+- Redaction Engine
+- Confidence Review Workflow
+- Entity Resolution
+- Audit Logs
+
+---
+
+# Repository Structure
+
+```text
+Crime-intelligence-platform/
+
+│
+├── .github/                 # GitHub workflows & templates
+│
 ├── apps/
-│   ├── web/                # React + Vite frontend
-│   ├── api/                # NestJS backend
-│   └── analytics/          # Python analytics / scoring jobs
-├── packages/
-│   ├── shared-types/       # Shared DTOs, enums, contracts
-│   └── config/             # Shared config, linting, TS settings
-├── docs/
-│   ├── prd/                # Product requirement documents
-│   ├── architecture/       # Architecture notes and diagrams
-│   ├── api/                # API contracts and endpoint docs
-│   ├── database/           # Schema and data model docs
-│   ├── roles/              # Permission matrix and access rules
-│   └── decisions/          # Architecture decision records
-├── infra/
-│   ├── db/                 # Database scripts and setup
-│   └── docker/             # Container and local infra config
-├── .github/
-│   ├── workflows/          # CI/CD workflows
-│   ├── CODEOWNERS          # Review ownership rules
-│   └── pull_request_template.md
-├── .env.example
-├── CONTRIBUTING.md
-├── SECURITY.md
-├── package.json
-├── pnpm-workspace.yaml
+│   ├── api/                 # FastAPI Backend
+│   │
+│   ├── analytics/           # Analytics & ETL Services
+│
+├── web/                     # React Frontend
+│
+├── docs/                    # Project Documentation
+│
+├── infra/                   # Infrastructure Configurations
+│
+├── packages/                # Shared Packages (future)
+│
+├── docker-compose.yml
+│
 └── README.md
 ```
 
-## User Roles
+---
 
-The platform is intended only for authorized users. Current planned roles include:
+# Backend Structure
 
-- Admin
+```text
+apps/api/
+
+├── app/
+│   ├── core/            # Config, Security, Database
+│   ├── models/          # SQLAlchemy Models
+│   ├── schemas/         # Pydantic Schemas
+│   ├── routers/         # API Routes
+│   ├── services/        # Business Logic
+│   ├── graph/           # Neo4j Operations
+│   ├── etl/             # Import & Processing
+│   └── main.py
+│
+├── alembic/
+├── tests/
+├── Dockerfile
+├── requirements.txt
+└── export_openapi.py
+```
+
+---
+
+# Analytics Module
+
+The analytics service is responsible for:
+
+- Crime trend analysis
+- Zone risk scoring
+- Explainable AI outputs
+- Clustering
+- Pattern detection
+- Data cleaning
+- Data transformation
+- Scheduled analytics jobs
+
+Libraries:
+
+- Pandas
+- NumPy
+- Scikit-learn
+
+---
+
+# Database Design
+
+## PostgreSQL + PostGIS
+
+Stores:
+
+- Persons
+- Cases
+- Incidents
+- Districts
+- Officers
+- Vehicles
+- Addresses
+- Evidence
+- Zone Information
+
+Provides:
+
+- Spatial Queries
+- Geographical Search
+- District Polygons
+
+---
+
+## Neo4j
+
+Stores:
+
+- Criminal Relationships
+- Gang Networks
+- Communication Links
+- Device Connections
+- Evidence Graphs
+
+Supports:
+
+- Path Queries
+- Relationship Expansion
+- Network Analysis
+
+---
+
+# User Roles
+
+Current planned roles:
+
+- Administrator
 - Supervisor
 - Intelligence Analyst
 - Detective
 - District Officer
 
-Each role will have controlled access to modules, records, and actions based on permissions and jurisdiction.
+Future roles may include:
 
-## Planned Map Modes
+- Cyber Cell Officer
+- Crime Branch Officer
+- State Intelligence Officer
 
-### Default Mode
-A clean district/state map view with minimal clutter, focused on geography and core intelligence indicators.
+Each role has permission-based access to resources.
 
-### Network Mode
-A relationship-focused map overlay showing criminal and gang connections across regions, with filters for specific individuals, gangs, cases, and time ranges.
+---
 
-### Zone Mode
-A visual risk layer that highlights more crime-prone or intelligence-sensitive areas using explainable scoring and color-based intensity.
+# API Documentation
 
-## Development Workflow
+FastAPI automatically generates API documentation.
 
-### Branching Strategy
+Swagger UI
 
-- `main` → stable branch
-- `develop` → integration branch
-- `feature/<feature-name>` → feature branches
-- `bugfix/<bug-name>` → bug fix branches
-- `hotfix/<hotfix-name>` → urgent fixes
+```
+http://localhost:8000/docs
+```
 
-### Rules
+OpenAPI Specification
 
-- Do not push directly to `main`
-- Create all feature work from `develop`
-- Open a pull request to merge into `develop`
-- Require at least one review before merge
-- Keep commits focused and descriptive
-- Update documentation when architecture or contracts change
+```
+http://localhost:8000/openapi.json
+```
 
-## Getting Started
+---
 
-### Prerequisites
+# Local Development
 
-Make sure the following are installed:
+## Prerequisites
 
-- Node.js (LTS)
-- pnpm
-- PostgreSQL
+Install:
+
+- Python 3.12+
+- Docker
+- Docker Compose
 - Git
-- Python 3.x
 
-### Clone the Repository
+---
 
-```bash
-git clone https://github.com/<owner>/state-crime-intelligence-platform.git
-cd state-crime-intelligence-platform
-```
-
-### Install Workspace Dependencies
+## Clone Repository
 
 ```bash
-pnpm install
+git clone https://github.com/<organization>/crime-intelligence-platform.git
+cd crime-intelligence-platform
 ```
 
-### Environment Variables
+---
 
-Create local environment files based on `.env.example`.
+## Environment
 
-Example root variables may include:
+Create:
 
-```env
-DATABASE_URL=
-JWT_SECRET=
-PORT=
-VITE_API_URL=
-MAP_TILE_URL=
+```text
+apps/api/.env
 ```
 
-Do not commit real secrets or private credentials.
+using
 
-## Running the Project
+```text
+apps/api/.env.example
+```
 
-The exact run steps will be added as the apps are initialized.
+---
 
-Planned commands:
+## Start Services
 
 ```bash
-pnpm dev:web
-pnpm dev:api
+docker compose up --build
 ```
 
-Additional setup instructions for database migration, seeding, and analytics jobs will be documented inside `/docs` and each app folder as development progresses.
+Services started:
 
-## Documentation
+- FastAPI
+- PostgreSQL
+- PostGIS
+- Neo4j
 
-Project documentation will be maintained inside the `/docs` directory.
+---
 
-Important docs include:
-- PRD
-- architecture overview
-- permission matrix
-- API contracts
-- database schema
-- setup guides
-- architecture decisions
+## Stop Services
 
-## Contributing
+```bash
+docker compose down
+```
 
-Before contributing:
-1. Pull the latest `develop`
-2. Create a new feature branch
-3. Commit only related changes
-4. Open a pull request with a clear summary
-5. Request review from the relevant code owner
+---
 
-Please read `CONTRIBUTING.md` for the full workflow.
+# Development Workflow
 
-## Security
+Branch Strategy
 
-This repository is private and intended for internal team development only.
+```
+main
+│
+develop
+│
+feature/<feature-name>
+│
+bugfix/<bug-name>
+│
+hotfix/<hotfix-name>
+```
 
-Important rules:
-- Never commit secrets, credentials, or production keys
-- Never upload real sensitive datasets
-- Use `.env` files for local configuration
-- Follow role-based access design carefully
-- Report security concerns privately to the repo admins
+Rules
 
-Please read `SECURITY.md` for more details.
+- Never commit directly to `main`
+- Work from `develop`
+- Use feature branches
+- Open Pull Requests
+- Keep commits focused
+- Update documentation when architecture changes
 
-## Current Status
+---
 
-This project is currently in the planning and repository setup phase.
+# Coding Standards
 
-Completed:
-- Product outline
-- PRD draft
-- Initial stack selection
-- Repository planning
+Backend
 
-Next:
-- Monorepo initialization
-- Backend and frontend app setup
-- Database schema design
-- API contract definition
-- Sprint 0 execution
+- FastAPI Best Practices
+- SQLAlchemy 2.x
+- Pydantic v2
+- Dependency Injection
+- Async APIs where appropriate
+- Layered Architecture
+- Clean Code Principles
 
-## Team
+Frontend
 
-- Team Lead: Ravi Shankar
-- Team Members: To be updated
+- TypeScript
+- Functional Components
+- React Hooks
+- Modular Components
 
-## License
+---
 
-This project is currently for academic/internal team use unless otherwise specified by the team.
+# Current Development Status
+
+## Sprint 0 ✅
+
+Completed
+
+- Repository initialization
+- Monorepo structure
+- FastAPI project scaffold
+- Docker Compose setup
+- PostgreSQL integration
+- PostGIS integration
+- Neo4j integration
+- Alembic setup
+- SQLAlchemy configuration
+- OpenAPI/Swagger generation
+- Backend architecture
+
+---
+
+## Sprint 1 🚧
+
+Currently In Progress
+
+- Authentication
+- JWT
+- RBAC
+- User Management
+- Audit Logging
+
+---
+
+## Upcoming Sprints
+
+### Sprint 2
+
+- District APIs
+- Zone APIs
+- Dashboard APIs
+
+### Sprint 3
+
+- Network Analysis
+- Neo4j Synchronization
+- Entity Relationships
+
+### Sprint 4
+
+- Case Workspace
+- Evidence Management
+- Investigation Notes
+
+### Sprint 5
+
+- Analytics Engine
+- ETL Pipelines
+- Explainable Risk Scoring
+
+### Sprint 6
+
+- Performance Optimization
+- Offline Support
+- Caching
+- Deployment
+
+---
+
+# Documentation
+
+Project documentation will be maintained inside the `docs/` directory.
+
+Documentation includes:
+
+- Product Requirements
+- Architecture
+- API Contracts
+- Database Schema
+- ER Diagrams
+- Role Permissions
+- Development Decisions
+- Setup Guides
+
+---
+
+# Security
+
+This repository is intended for authorized development only.
+
+Security Guidelines:
+
+- Never commit `.env` files
+- Never commit secrets
+- Never upload production credentials
+- Follow RBAC design principles
+- Audit sensitive operations
+- Use redaction for protected information
+
+---
+
+# Team
+
+Project Team
+
+- Team Lead
+- Backend Team
+- Frontend Team
+- Analytics Team
+
+---
+
+# License
+
+This project is developed for academic research and educational purposes.
+
+Future licensing will be decided by the project team.
