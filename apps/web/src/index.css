@@ -1,0 +1,74 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-surface-border;
+  }
+
+  body {
+    @apply bg-surface-base text-sentinel-100 font-sans antialiased;
+    min-height: 100vh;
+  }
+
+  ::selection {
+    @apply bg-accent-blue/20 text-sentinel-50;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { @apply bg-transparent; }
+  ::-webkit-scrollbar-thumb { @apply bg-sentinel-500/50 rounded-full; }
+  ::-webkit-scrollbar-thumb:hover { @apply bg-sentinel-400/60; }
+  * { scrollbar-width: thin; scrollbar-color: #2d3a4d transparent; }
+
+  /* Leaflet dark override */
+  .leaflet-container { background: #070b14 !important; }
+  .leaflet-tile-pane { filter: brightness(0.85) saturate(0.9); }
+  .leaflet-control-attribution { display: none !important; }
+  .leaflet-control-zoom a {
+    background: #1a2332 !important;
+    color: #94a3b8 !important;
+    border-color: #1e293b !important;
+  }
+}
+
+@layer components {
+  /* Glass card */
+  .glass {
+    @apply bg-surface-card/80 backdrop-blur-sm border border-surface-border;
+  }
+
+  /* Panel slide-in (right panels) */
+  .panel-right {
+    @apply bg-surface-raised border-l border-surface-border;
+    animation: slide-in-right 0.25s ease-out;
+  }
+
+  /* Monospace label style */
+  .mono-label {
+    @apply font-mono text-[11px] tracking-wide text-sentinel-300;
+  }
+
+  /* Section header */
+  .section-label {
+    @apply text-[10px] font-semibold uppercase tracking-[0.15em] text-sentinel-400;
+  }
+
+  /* Tag pill */
+  .tag-pill {
+    @apply text-[10px] font-medium px-2 py-0.5 rounded bg-surface-hover text-sentinel-200 border border-surface-border;
+  }
+
+  /* Dot-grid canvas background (for Cytoscape) */
+  .dot-grid {
+    background-image: radial-gradient(circle, #1e293b 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+
+  /* Cytoscape container */
+  .cy-container {
+    @apply w-full h-full;
+  }
+}
