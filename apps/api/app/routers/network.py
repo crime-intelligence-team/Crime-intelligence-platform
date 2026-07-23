@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, Query
 
-from app.core.dependencies import get_current_officer
+from app.core.dependencies import get_current_officer, require_permissions
 from app.models.entities import Officer
 from app.schemas.common import PaginatedResponse
 
@@ -14,13 +14,18 @@ def search_entities(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     officer: Officer = Depends(get_current_officer),
+    _pm: Officer = Depends(require_permissions("entity:read")),
 ):
     """Phase 4 stub — real impl fans out to Neo4j + Postgres, permission-filtered."""
     return PaginatedResponse(items=[], total=0, page=page, page_size=page_size)
 
 
 @router.get("/entities/{entity_id}")
-def get_entity(entity_id: str, officer: Officer = Depends(get_current_officer)):
+def get_entity(
+    entity_id: str,
+    officer: Officer = Depends(get_current_officer),
+    _pm: Officer = Depends(require_permissions("entity:read")),
+):
     return {"id": entity_id, "classification": "restricted_operational", "_stub": True}
 
 
@@ -30,11 +35,16 @@ def get_entity_relationships(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     officer: Officer = Depends(get_current_officer),
+    _pm: Officer = Depends(require_permissions("relationship:view")),
 ):
     return PaginatedResponse(items=[], total=0, page=page, page_size=page_size)
 
 
 @router.get("/relationships/{relationship_id}")
-def get_relationship(relationship_id: str, officer: Officer = Depends(get_current_officer)):
+def get_relationship(
+    relationship_id: str,
+    officer: Officer = Depends(get_current_officer),
+    _pm: Officer = Depends(require_permissions("relationship:view")),
+):
     """Edge detail with evidence — confidence + classification always present."""
     return {"id": relationship_id, "classification": "restricted_operational", "_stub": True}

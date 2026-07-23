@@ -37,6 +37,7 @@ class Officer(Base, TimestampMixin):
     home_district_id = Column(UUID(as_uuid=True), ForeignKey("districts.id"), nullable=True)
     mfa_enabled = Column(Integer, default=1)  # 1/0 instead of bool for simple SQLite/PG parity
     is_active = Column(Integer, default=1)
+    last_login_at = Column(DateTime(timezone=True), nullable=True)
 
 
 class District(Base, ClassificationMixin, TimestampMixin):

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, Query
 
-from app.core.dependencies import get_current_officer, require_roles, require_step_up_auth
+from app.core.dependencies import get_current_officer, require_permissions, require_roles, require_step_up_auth
 from app.models.entities import Officer, Role
 from app.schemas.common import PaginatedResponse
 
@@ -13,7 +13,7 @@ router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
 def list_access_exceptions(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
-    officer: Officer = Depends(require_roles(Role.SUPERVISOR, Role.ADMINISTRATOR)),
+    officer: Officer = Depends(require_permissions("exception:approve")),
 ):
     return PaginatedResponse(items=[], total=0, page=page, page_size=page_size)
 
@@ -28,6 +28,7 @@ def request_access_exception(officer: Officer = Depends(get_current_officer)):
 def decide_access_exception(
     exception_id: str,
     officer: Officer = Depends(require_step_up_auth),
+    _perm: Officer = Depends(require_permissions("exception:approve")),
 ):
     """Approve/deny — requires step-up auth per brief 7.1."""
     return {"id": exception_id, "status": "stub-decision", "_stub": True}
@@ -39,7 +40,7 @@ def decide_access_exception(
 def list_merge_candidates(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
-    officer: Officer = Depends(require_roles(Role.ANALYST, Role.SUPERVISOR, Role.ADMINISTRATOR)),
+    officer: Officer = Depends(require_permissions("entity:resolve")),
 ):
     return PaginatedResponse(items=[], total=0, page=page, page_size=page_size)
 
@@ -47,7 +48,7 @@ def list_merge_candidates(
 @router.post("/entity-resolution/{candidate_id}/merge")
 def merge_entities(
     candidate_id: str,
-    officer: Officer = Depends(require_roles(Role.ANALYST, Role.SUPERVISOR, Role.ADMINISTRATOR)),
+    officer: Officer = Depends(require_permissions("entity:resolve")),
 ):
     """Merge history must remain reversible/auditable, never a silent overwrite (brief 7.8)."""
     return {"id": candidate_id, "status": "merged", "_stub": True}
@@ -63,7 +64,7 @@ def submit_confidence_review(officer: Officer = Depends(get_current_officer)):
 @router.post("/confidence-review/{review_id}/decision")
 def decide_confidence_review(
     review_id: str,
-    officer: Officer = Depends(require_roles(Role.SUPERVISOR, Role.ADMINISTRATOR)),
+    officer: Officer = Depends(require_permissions("confidence:review")),
 ):
     return {"id": review_id, "status": "stub-decision", "_stub": True}
 
@@ -74,6 +75,6 @@ def decide_confidence_review(
 def list_redaction_decisions(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
-    officer: Officer = Depends(require_roles(Role.ADMINISTRATOR)),
+    officer: Officer = Depends(require_permissions("redaction:manage")),
 ):
     return PaginatedResponse(items=[], total=0, page=page, page_size=page_size)

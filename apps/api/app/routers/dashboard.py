@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 
-from app.core.dependencies import get_current_officer
+from app.core.dependencies import get_current_officer, require_permissions
 from app.models.entities import Officer
 from app.schemas.dashboard import DashboardResponse, KpiStrip
 
@@ -8,7 +8,11 @@ router = APIRouter(prefix="/api/v1/dashboard", tags=["dashboard"])
 
 
 @router.get("/{region_id}", response_model=DashboardResponse)
-def get_dashboard(region_id: str, officer: Officer = Depends(get_current_officer)):
+def get_dashboard(
+    region_id: str,
+    officer: Officer = Depends(get_current_officer),
+    _pm: Officer = Depends(require_permissions("dashboard:view")),
+):
     """
     Phase 0 stub. Phase 3: real aggregation — critically, redaction filtering
     must run BEFORE aggregation so no hidden record is inferable from a count.

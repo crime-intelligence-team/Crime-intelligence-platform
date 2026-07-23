@@ -1,5 +1,7 @@
 from fastapi import APIRouter, Depends, Request
 
+from sqlalchemy.orm import Session
+
 from app.core.database import get_db
 from app.core.dependencies import get_current_officer
 from app.models.entities import Officer
@@ -10,8 +12,7 @@ from app.schemas.auth import (
     MfaVerifyRequest,
     MfaVerifyResponse,
 )
-from app.services import auth as auth_service
-from sqlalchemy.orm import Session
+from app.services import auth_service
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 

@@ -1,50 +1,18 @@
-import uuid
+from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.permissions import get_officer_permissions
 from app.core.security import create_access_token, decode_access_token, verify_password
-from app.models.entities import Officer, Role
+from app.models.entities import Officer
 from app.models.governance import AuditLogEntry
 from app.schemas.auth import CurrentUserResponse, LoginResponse, MfaVerifyResponse
 
 
-ROLE_PERMISSIONS: dict[Role, list[str]] = {
-    Role.DISTRICT_OFFICER: [
-        "case:read", "case:write", "entity:read", "entity:write",
-        "search:basic", "map:view", "note:create", "note:read",
-    ],
-    Role.DETECTIVE: [
-        "case:read", "case:write", "entity:read", "entity:write",
-        "search:basic", "search:advanced", "map:view", "note:create",
-        "note:read", "export:case", "relationship:view",
-    ],
-    Role.ANALYST: [
-        "case:read", "entity:read", "search:basic", "search:advanced",
-        "map:view", "relationship:view", "dashboard:view",
-        "export:analysis", "risk:view",
-    ],
-    Role.SUPERVISOR: [
-        "case:read", "case:write", "entity:read", "entity:write",
-        "search:basic", "search:advanced", "map:view", "note:create",
-        "note:read", "export:case", "export:analysis", "relationship:view",
-        "dashboard:view", "risk:view", "officer:view", "audit:view",
-        "exception:approve",
-    ],
-    Role.ADMINISTRATOR: [
-        "case:read", "case:write", "entity:read", "entity:write",
-        "search:basic", "search:advanced", "map:view", "note:create",
-        "note:read", "export:case", "export:analysis", "relationship:view",
-        "dashboard:view", "risk:view", "officer:view", "officer:manage",
-        "audit:view", "exception:approve", "system:configure",
-        "classification:override",
-    ],
-}
-
-
-def _log_audit(
+def _write_audit_log(
     db: Session,
-    actor_id: uuid.UUID | None,
+    actor_id,
     action: str,
     resource_type: str | None = None,
     resource_id: str | None = None,
@@ -63,10 +31,11 @@ def _log_audit(
     db.commit()
 
 
-def authenticate_user(
+def authenticate_officer(
     db: Session,
     username_or_official_id: str,
     password: str,
+    ip_address: str | None = None,
 ) -> Officer:
     officer = (
         db.query(Officer)
@@ -76,7 +45,13 @@ def authenticate_user(
         )
         .first()
     )
+
     if officer is None:
+        _write_audit_log(
+            db, actor_id=None, action="login_failed",
+            detail=f"Unknown user: {username_or_official_id}",
+            ip_address=ip_address,
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={
@@ -87,7 +62,13 @@ def authenticate_user(
                 }
             },
         )
+
     if not verify_password(password, officer.hashed_password):
+        _write_audit_log(
+            db, actor_id=officer.id, action="login_failed",
+            detail="Invalid password",
+            ip_address=ip_address,
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={
@@ -98,7 +79,13 @@ def authenticate_user(
                 }
             },
         )
+
     if not officer.is_active:
+        _write_audit_log(
+            db, actor_id=officer.id, action="login_failed",
+            detail="Inactive account",
+            ip_address=ip_address,
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={
@@ -109,6 +96,7 @@ def authenticate_user(
                 }
             },
         )
+
     return officer
 
 
@@ -118,28 +106,30 @@ def login(
     password: str,
     ip_address: str | None = None,
 ) -> LoginResponse:
-    officer = authenticate_user(db, username_or_official_id, password)
+    officer = authenticate_officer(db, username_or_official_id, password, ip_address)
 
     if officer.mfa_enabled:
         challenge_token = create_access_token(
             data={"sub": str(officer.id), "purpose": "mfa_challenge"},
             expires_minutes=5,
         )
-        _log_audit(
-            db=db,
-            actor_id=officer.id,
-            action="mfa_challenge_issued",
+        _write_audit_log(
+            db, actor_id=officer.id, action="mfa_challenge_issued",
             ip_address=ip_address,
-            detail="MFA challenge issued",
         )
         return LoginResponse(mfa_required=True, mfa_challenge_token=challenge_token)
 
-    access_token = create_access_token(data={"sub": str(officer.id)})
-    _log_audit(
-        db=db,
-        actor_id=officer.id,
-        action="login",
+    officer.last_login_at = datetime.now(timezone.utc)
+    db.commit()
+
+    _write_audit_log(
+        db, actor_id=officer.id, action="login",
         ip_address=ip_address,
+    )
+
+    now_ts = datetime.now(timezone.utc).timestamp()
+    access_token = create_access_token(
+        data={"sub": str(officer.id), "purpose": "access", "session_start": now_ts}
     )
     return LoginResponse(mfa_required=False, access_token=access_token)
 
@@ -189,11 +179,16 @@ def verify_mfa(
             },
         )
 
-    access_token = create_access_token(data={"sub": officer_id})
-    _log_audit(
-        db=db,
-        actor_id=officer.id,
-        action="mfa_verified",
+    officer.last_login_at = datetime.now(timezone.utc)
+    db.commit()
+
+    now_ts = datetime.now(timezone.utc).timestamp()
+    access_token = create_access_token(
+        data={"sub": officer_id, "purpose": "access", "session_start": now_ts}
+    )
+
+    _write_audit_log(
+        db, actor_id=officer.id, action="mfa_verified",
         ip_address=ip_address,
     )
     return MfaVerifyResponse(access_token=access_token)
@@ -204,16 +199,21 @@ def logout(
     officer: Officer,
     ip_address: str | None = None,
 ) -> None:
-    _log_audit(
-        db=db,
-        actor_id=officer.id,
-        action="logout",
+    """
+    Stateless JWT logout: no server-side token blacklist or session table.
+    The client must discard the token. This endpoint only confirms the token
+    was valid (via get_current_officer dependency) and records the audit
+    event. Real server-side revocation would require a token allowlist or
+    blocklist — implement that only if the brief explicitly requires it.
+    """
+    _write_audit_log(
+        db, actor_id=officer.id, action="logout",
         ip_address=ip_address,
     )
 
 
 def get_current_user_data(officer: Officer) -> CurrentUserResponse:
-    permissions = ROLE_PERMISSIONS.get(officer.role, [])
+    permissions = get_officer_permissions(officer)
     jurisdiction = []
     if officer.home_district_id:
         jurisdiction.append(str(officer.home_district_id))

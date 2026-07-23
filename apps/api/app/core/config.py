@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     SESSION_INACTIVITY_EXPIRE_MINUTES: int = 15
+    SESSION_ABSOLUTE_EXPIRE_HOURS: int = 12
 
     # App
     ENVIRONMENT: str = "development"
