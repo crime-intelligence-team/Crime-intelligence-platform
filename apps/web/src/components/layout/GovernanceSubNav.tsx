@@ -1,7 +1,8 @@
 import { NavLink } from 'react-router-dom'
 
 const TABS = [
-  { label: 'Integrity',  to: '/governance/integrity'  },
+  { label: 'Security',   to: '/governance'             },
+  { label: 'Integrity',  to: '/governance/integrity'   },
   { label: 'Audit Logs', to: '/governance/audit'       },
   { label: 'Protocols',  to: '/governance/protocols'   },
   { label: 'Directives', to: '/governance/directives'  },
@@ -15,15 +16,29 @@ export function GovernanceSubNav() {
         <NavLink
           key={tab.to}
           to={tab.to}
+          end={tab.to === '/governance'}
           className={({ isActive }) =>
-            `px-4 py-2.5 text-xs font-medium whitespace-nowrap border-b-2 transition-colors ${
+            `relative px-4 py-2.5 text-xs font-medium whitespace-nowrap transition-all duration-150 ${
               isActive
-                ? 'border-accent-blue text-sentinel-50'
-                : 'border-transparent text-sentinel-400 hover:text-sentinel-200 hover:border-surface-border'
+                ? 'text-accent-blue'
+                : 'text-sentinel-400 hover:text-sentinel-200'
             }`
           }
         >
-          {tab.label}
+          {({ isActive }) => (
+            <>
+              {tab.label}
+              {/* Active underline with glow */}
+              <span
+                className={`absolute bottom-0 left-0 right-0 h-0.5 rounded-full transition-all duration-200 ${
+                  isActive
+                    ? 'bg-accent-blue opacity-100'
+                    : 'bg-transparent opacity-0'
+                }`}
+                style={isActive ? { boxShadow: '0 0 8px 1px rgba(59,130,246,0.6)' } : {}}
+              />
+            </>
+          )}
         </NavLink>
       ))}
     </nav>

@@ -4,6 +4,7 @@ import { Search, Bell, Settings, HelpCircle, Shield, AlertTriangle } from 'lucid
 import { NotificationsPanel } from '../ui/NotificationsPanel'
 import { useAlerts, useAppContext } from '../../context/AppContext'
 import { useRealtimeAlerts } from '../../hooks/useRealtimeAlerts'
+import { Breadcrumb } from './Breadcrumb'
 
 const placeholderMap: Record<string, string> = {
   '/cases':       'Search entities or cases...',
@@ -37,16 +38,13 @@ export default function TopBar() {
 
   return (
     <header className="flex items-center justify-between h-14 px-5 bg-surface-raised border-b border-surface-border shrink-0 gap-4">
-      {/* Brand */}
-      {isGov ? (
-        <span className="text-base font-bold text-sentinel-50 tracking-tight whitespace-nowrap shrink-0">
-          Sentinel Governance
+      {/* Brand + Breadcrumb */}
+      <div className="flex flex-col justify-center shrink-0 min-w-0">
+        <span className="text-xs font-bold text-sentinel-50 tracking-tight whitespace-nowrap leading-tight">
+          {isGov ? 'Sentinel Governance' : 'Sentinel Intelligence'}
         </span>
-      ) : (
-        <span className="text-sm font-bold text-sentinel-50 tracking-tight whitespace-nowrap shrink-0 hidden md:block">
-          Sentinel Intelligence
-        </span>
-      )}
+        <Breadcrumb />
+      </div>
 
       {/* Emergency mode banner */}
       {state.emergencyMode && (

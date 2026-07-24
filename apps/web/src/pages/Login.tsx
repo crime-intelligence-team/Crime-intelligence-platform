@@ -8,7 +8,11 @@ function WallpaperGrid() {
   const cards = Array.from({ length: 12 })
   return (
     <div className="absolute inset-0 overflow-hidden pointer-events-none select-none">
-      <div className="grid grid-cols-4 gap-3 p-4 opacity-[0.06] scale-110 rotate-[-4deg] origin-center" style={{ minHeight: '120%', marginTop: '-10%' }}>
+      {/* Drifting background cards */}
+      <div
+        className="grid grid-cols-4 gap-3 p-4 opacity-[0.055] scale-110 rotate-[-4deg] origin-center animate-drift"
+        style={{ minHeight: '120%', marginTop: '-10%', animationDuration: '20s' }}
+      >
         {cards.map((_, i) => (
           <div key={i} className="bg-surface-card border border-surface-border rounded-xl p-4 space-y-2">
             <div className="flex items-center gap-2 mb-3">
@@ -27,6 +31,9 @@ function WallpaperGrid() {
           </div>
         ))}
       </div>
+      {/* Ambient glow orbs */}
+      <div className="absolute top-1/3 left-1/4 w-96 h-96 rounded-full opacity-10 animate-pulse" style={{ background: 'radial-gradient(circle, rgba(59,130,246,0.8) 0%, transparent 70%)' }} />
+      <div className="absolute bottom-1/3 right-1/4 w-64 h-64 rounded-full opacity-5" style={{ background: 'radial-gradient(circle, rgba(239,68,68,0.9) 0%, transparent 70%)' }} />
     </div>
   )
 }

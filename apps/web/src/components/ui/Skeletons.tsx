@@ -5,7 +5,7 @@
 
 function Shimmer({ className = '' }: { className?: string }) {
   return (
-    <div className={`bg-surface-hover rounded animate-pulse ${className}`} />
+    <div className={`shimmer-bg rounded ${className}`} />
   )
 }
 

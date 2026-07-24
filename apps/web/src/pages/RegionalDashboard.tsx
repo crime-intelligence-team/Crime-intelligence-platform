@@ -1,10 +1,8 @@
 import { useParams, useNavigate } from 'react-router-dom'
 import { BarChart, Bar, ResponsiveContainer, Cell, Tooltip } from 'recharts'
 import {
-  ArrowLeft, AlertTriangle, Shield, Cpu, Bus, Building2, HeartPulse, Wifi,
-  Activity,
+  ArrowLeft, Cpu, Bus, Building2, HeartPulse, Wifi,
 } from 'lucide-react'
-import { StatCard } from '../components/ui/StatCard'
 import { karnatakaDistricts } from '../data/districts'
 import { incidentTrend72h } from '../data/analytics'
 
@@ -35,28 +33,40 @@ export default function RegionalDashboard() {
       <div className="flex items-start justify-between mb-6">
         <div>
           <button onClick={() => navigate('/map')}
-            className="flex items-center gap-1.5 text-xs text-sentinel-400 hover:text-sentinel-200 mb-2 transition-colors">
-            <ArrowLeft className="w-3.5 h-3.5" /> Back to Map
+            className="flex items-center gap-1.5 text-xs text-sentinel-400 hover:text-sentinel-200 mb-2 transition-colors group">
+            <ArrowLeft className="w-3.5 h-3.5 group-hover:-translate-x-0.5 transition-transform" /> Back to Map
           </button>
           <h1 className="text-2xl font-bold text-sentinel-50">{district.name}</h1>
           <p className="text-xs text-sentinel-400 mt-0.5">District Intelligence Dashboard</p>
         </div>
-        <button className="flex items-center gap-2 px-3 py-1.5 bg-severity-critical/10 border border-severity-critical/30 rounded-lg text-xs font-medium text-severity-critical animate-pulse-slow">
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-severity-critical/10 border border-severity-critical/30 rounded-lg animate-pulse-glow-red">
           <span className="w-2 h-2 rounded-full bg-severity-critical animate-pulse" />
-          LIVE OPERATIONS
-        </button>
+          <span className="text-xs font-semibold text-severity-critical tracking-widest">LIVE OPERATIONS</span>
+        </div>
       </div>
 
       {/* Stats row */}
-      <div className="grid grid-cols-4 gap-3 mb-4">
-        <StatCard label="Total Active Incidents" value={district.totalIncidents.toLocaleString()}
-          subtext={`▲ +${district.trend}% vs 24h`} subtextColor="amber" icon={AlertTriangle} />
-        <StatCard label="Average Risk Score" value={`${district.riskScore}/100`}
-          subtext="— Stable" subtextColor="muted" icon={Activity} />
-        <StatCard label="Deployed Assets" value="42"
-          subtext="✓ All units responding" subtextColor="green" icon={Shield} />
-        <StatCard label="System Uptime" value="99.98%"
-          subtext="Node cluster nominal" subtextColor="muted" icon={Cpu} />
+      <div className="grid grid-cols-4 gap-3 mb-4 stagger-children">
+        <div className="bg-surface-card border border-severity-critical/20 rounded-xl p-4" style={{ background: 'linear-gradient(135deg, rgba(239,68,68,0.06) 0%, transparent 60%)' }}>
+          <p className="section-label mb-1">Total Active Incidents</p>
+          <p className="text-3xl font-bold text-severity-critical animate-count-up">{district.totalIncidents.toLocaleString()}</p>
+          <p className="text-[10px] text-accent-amber mt-1">▲ +{district.trend}% vs 24h</p>
+        </div>
+        <div className="bg-surface-card border border-accent-amber/20 rounded-xl p-4" style={{ background: 'linear-gradient(135deg, rgba(245,158,11,0.06) 0%, transparent 60%)' }}>
+          <p className="section-label mb-1">Average Risk Score</p>
+          <p className="text-3xl font-bold text-accent-amber animate-count-up">{district.riskScore}<span className="text-base text-sentinel-400">/100</span></p>
+          <p className="text-[10px] text-sentinel-500 mt-1">— Stable</p>
+        </div>
+        <div className="bg-surface-card border border-accent-blue/20 rounded-xl p-4" style={{ background: 'linear-gradient(135deg, rgba(59,130,246,0.06) 0%, transparent 60%)' }}>
+          <p className="section-label mb-1">Deployed Assets</p>
+          <p className="text-3xl font-bold text-accent-blue animate-count-up">42</p>
+          <p className="text-[10px] text-accent-emerald mt-1">✓ All units responding</p>
+        </div>
+        <div className="bg-surface-card border border-accent-emerald/20 rounded-xl p-4" style={{ background: 'linear-gradient(135deg, rgba(34,197,94,0.06) 0%, transparent 60%)' }}>
+          <p className="section-label mb-1">System Uptime</p>
+          <p className="text-3xl font-bold text-accent-emerald animate-count-up">99.98<span className="text-base text-sentinel-400">%</span></p>
+          <p className="text-[10px] text-sentinel-500 mt-1">Node cluster nominal</p>
+        </div>
       </div>
 
       {/* Main grid */}
@@ -109,14 +119,18 @@ export default function RegionalDashboard() {
         {/* Right column (2/5) */}
         <div className="col-span-2 space-y-4">
           {/* Threat level */}
-          <div className="bg-surface-card border border-surface-border rounded-xl p-5 relative overflow-hidden">
+          <div className="bg-surface-card border border-severity-critical/30 rounded-xl p-5 relative overflow-hidden glow-red">
             <p className="section-label mb-4">Regional Threat Level</p>
             {/* Decorative chevron */}
-            <div className="absolute right-4 top-6 opacity-20 select-none pointer-events-none">
+            <div className="absolute right-4 top-6 opacity-10 select-none pointer-events-none">
               <span style={{ fontSize: 120, lineHeight: 1, color: '#f43f5e', fontWeight: 900, transform: 'rotate(-10deg)', display: 'block' }}>›</span>
             </div>
-            <p className="text-4xl font-black text-accent-rose tracking-tight">CRITICAL</p>
+            <p className="text-4xl font-black text-severity-critical tracking-tight animate-pulse-glow-red" style={{ textShadow: '0 0 20px rgba(239,68,68,0.4)' }}>CRITICAL</p>
             <p className="text-xs text-sentinel-400 mt-2">Escalation Protocol Alpha Active</p>
+            <div className="flex items-center gap-1.5 mt-3">
+              <span className="w-1.5 h-1.5 rounded-full bg-severity-critical animate-pulse" />
+              <span className="text-[10px] text-severity-critical/70 font-mono">PROT-ALPHA ENGAGED</span>
+            </div>
           </div>
 
           {/* Priority entities */}
@@ -124,10 +138,12 @@ export default function RegionalDashboard() {
             <h2 className="text-sm font-semibold text-sentinel-100 mb-3">Top Priority Entities</h2>
             {district.priorityEntities.map(e => {
               const Icon = entityIcons[e.icon] ?? Cpu
+              const iconBg = e.status === 'critical' ? 'bg-severity-critical/10 border-severity-critical/20' : e.status === 'elevated' ? 'bg-accent-amber/10 border-accent-amber/20' : 'bg-surface-hover border-surface-border'
+              const iconColor = e.status === 'critical' ? 'text-severity-critical' : e.status === 'elevated' ? 'text-accent-amber' : 'text-sentinel-400'
               return (
-                <div key={e.id} className="flex items-center gap-3 py-2.5 border-b border-surface-border last:border-0">
-                  <div className="w-7 h-7 rounded bg-surface-hover border border-surface-border flex items-center justify-center shrink-0">
-                    <Icon className="w-3.5 h-3.5 text-sentinel-400" />
+                <div key={e.id} className="flex items-center gap-3 py-2.5 border-b border-surface-border last:border-0 hover:bg-surface-hover/50 transition-colors rounded-lg px-1 -mx-1">
+                  <div className={`w-7 h-7 rounded border flex items-center justify-center shrink-0 ${iconBg}`}>
+                    <Icon className={`w-3.5 h-3.5 ${iconColor}`} />
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="font-mono text-[11px] font-medium text-sentinel-100 truncate">{e.name}</p>

@@ -13,7 +13,8 @@ export default function AppShell() {
       <div className="flex flex-col flex-1 min-w-0">
         <TopBar />
         {isGovernance && <GovernanceSubNav />}
-        <main className="flex-1 overflow-hidden">
+        {/* page-enter triggers slide-up fade on every route change via key */}
+        <main key={pathname} className="flex-1 overflow-hidden page-enter">
           <Outlet />
         </main>
       </div>
