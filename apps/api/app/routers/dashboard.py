@@ -1,8 +1,13 @@
-from fastapi import APIRouter, Depends
+from uuid import UUID
 
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
+
+from app.core.database import get_db
 from app.core.dependencies import get_current_officer, require_permissions
 from app.models.entities import Officer
-from app.schemas.dashboard import DashboardResponse, KpiStrip
+from app.schemas.dashboard import DashboardResponse
+from app.services import dashboard_service
 
 router = APIRouter(prefix="/api/v1/dashboard", tags=["dashboard"])
 
@@ -12,16 +17,31 @@ def get_dashboard(
     region_id: str,
     officer: Officer = Depends(get_current_officer),
     _pm: Officer = Depends(require_permissions("dashboard:view")),
+    db: Session = Depends(get_db),
 ):
-    """
-    Phase 0 stub. Phase 3: real aggregation — critically, redaction filtering
-    must run BEFORE aggregation so no hidden record is inferable from a count.
-    """
-    return DashboardResponse(
-        region_id=region_id,
-        kpis=KpiStrip(total_incidents=0, active_gangs=0, open_cases=0, high_priority_entities=0),
-        trends=[],
-        hotspots=[],
-        priority_entities=[],
-        alerts=[],
-    )
+    try:
+        region_uuid = UUID(region_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": {
+                    "code": "invalid_uuid",
+                    "message": "Region ID is not a valid UUID",
+                    "details": None,
+                }
+            },
+        )
+    result = dashboard_service.get_dashboard(db=db, region_id=region_uuid, officer=officer)
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "error": {
+                    "code": "region_not_found",
+                    "message": "Region not found or not accessible to this officer",
+                    "details": None,
+                }
+            },
+        )
+    return result

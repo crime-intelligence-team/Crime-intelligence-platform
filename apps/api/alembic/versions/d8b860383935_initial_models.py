@@ -47,7 +47,6 @@ def upgrade() -> None:
     sa.UniqueConstraint('code'),
     sa.UniqueConstraint('name')
     )
-    op.create_index('idx_districts_geometry', 'districts', ['geometry'], unique=False, postgresql_using='gist')
     op.create_table('organizations',
     sa.Column('id', sa.UUID(), nullable=False),
     sa.Column('name', sa.String(), nullable=False),
@@ -107,7 +106,6 @@ def upgrade() -> None:
     sa.ForeignKeyConstraint(['district_id'], ['districts.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
-    op.create_index('idx_addresses_geocoded_point', 'addresses', ['geocoded_point'], unique=False, postgresql_using='gist')
     op.create_table('officers',
     sa.Column('id', sa.UUID(), nullable=False),
     sa.Column('official_id', sa.String(), nullable=False),
@@ -138,7 +136,6 @@ def upgrade() -> None:
     sa.ForeignKeyConstraint(['district_id'], ['districts.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
-    op.create_index('idx_zones_geometry', 'zones', ['geometry'], unique=False, postgresql_using='gist')
     op.create_table('access_exception_requests',
     sa.Column('id', sa.UUID(), nullable=False),
     sa.Column('requested_by_id', sa.UUID(), nullable=False),

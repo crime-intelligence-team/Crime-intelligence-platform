@@ -2,7 +2,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
-from app.models.entities import District, Officer, Role
+from app.models.entities import Case, District, Officer, Role
 from app.schemas.map import DistrictDetail, DistrictQuickSummary, DistrictSummary
 from app.utils.geometry import geometry_to_geojson
 
@@ -12,6 +12,8 @@ def get_accessible_district_ids(officer: Officer) -> list[UUID] | None:
         return None
     if officer.home_district_id is not None:
         return [officer.home_district_id]
+    # Fail-closed: a DISTRICT_OFFICER/DETECTIVE with no home district set
+    # sees nothing, rather than falling through to unfiltered access.
     return []
 
 
@@ -61,7 +63,7 @@ def get_district_summary(db: Session, district_id: UUID, officer: Officer) -> Di
         return None
     return DistrictQuickSummary(
         district_id=str(district.id),
-        open_cases=0,
+        open_cases=db.query(Case).filter(Case.district_id == district_id, Case.status == "open").count(),
         active_alerts=0,
         priority_entities=0,
         classification=district.classification.value,
