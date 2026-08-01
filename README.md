@@ -1,74 +1,93 @@
-# Crime Intelligence Platform — Backend (Phase 0)
+# Crime Intelligence Platform — Backend
 
-## What's here
+FastAPI + PostGIS + Neo4j crime-intelligence platform (Sprint 1, Phases 2–6:
+districts/zones, dashboard, entities/relationships, cases/notes/export,
+governance: step-up re-auth, alerts, redaction engine, access exceptions,
+entity resolution, confidence review).
 
-Phase 0 scaffold: repo structure, Docker services (Postgres+PostGIS, Neo4j,
-FastAPI), SQLAlchemy models for the core entities + governance tables,
-Pydantic schemas encoding the classification/confidence contract rules,
-and stub routers for the full endpoint surface in the brief's §8 — so the
-OpenAPI contract exists and the frontend can build against it immediately.
+The full setup below is **verified on a clean checkout** (Phase 7,
+component 1): fresh clone → empty volumes → build → migrations from empty
+DB → seeds → one end-to-end request per phase.
 
-Everything here was written and syntax-checked in a sandbox without
-network access, so it has **not been run yet**. Do this first:
+## Prerequisites
 
-## First run (do this, not me — I don't have network access in my sandbox)
+- Docker with Compose v2 (`docker compose version`)
+- A local `psql` client is optional (only needed for ad-hoc DB queries);
+  `docker exec cip-postgres psql -U cip -d cip` works for that.
+
+## Verified setup (from a clean checkout)
 
 ```bash
+git clone <repo> Crime-intelligence-platform
 cd Crime-intelligence-platform
-cp apps/api/.env.example apps/api/.env
-docker compose up --build
+cp apps/api/.env.example apps/api/.env        # REQUIRED — compose fails without it
+docker compose up --build                     # postgres (healthy) + neo4j (healthy) + api
 ```
 
-Then in another terminal, check it actually came up:
+Wait until both DBs report healthy and `cip-api` is up, then:
 
 ```bash
 curl http://localhost:8000/health
-# expect: {"status":"ok","environment":"development"}
+# expect: {"status":"ok", ...}
 ```
 
-If that works, generate the OpenAPI contract file the frontend team will use:
+## Migrations
+
+Run from the host against the empty Postgres (the compose `api` service
+mounts the code, but alembic is invoked here for a clean log):
 
 ```bash
-docker compose exec api python export_openapi.py
-docker compose cp api:/app/openapi.json ./docs/openapi.json
+cd apps/api
+DATABASE_URL=postgresql+psycopg2://cip:cip_dev_password@localhost:5432/cip \
+  alembic upgrade head
 ```
 
-Commit `docs/openapi.json` — that's the artifact that unblocks frontend.
+Expected (empty DB, in order):
 
-## Database migrations
+```
+Running upgrade  -> d8b860383935, initial_models
+Running upgrade d8b860383935 -> b3a7c11e4d92, add_alerts
+Running upgrade b3a7c11e4d92 -> eb9e4c3f18a2, redaction_policy_decisions
+Running upgrade eb9e4c3f18a2 -> f8a2b7d64c03, confidence_review_events
+Running upgrade f8a2b7d64c03 -> a9c4e8d2f1b5, entity_resolution_events
+```
 
-No migrations exist yet — this is the very next task. Once models are
-confirmed stable:
+## Seed data (in this order — later scripts resolve earlier rows by name)
 
 ```bash
-docker compose exec api alembic revision --autogenerate -m "initial schema"
-docker compose exec api alembic upgrade head
+docker exec cip-api python -m scripts.seed_dev_data              # districts, zones, 20 addresses, ADM/ANL/DTO officers, CASE-2026-0001
+docker exec cip-api python -m scripts.seed_phase4_test_data      # SUP-0001 supervisor, PROTECTED address, protected person
+docker exec cip-api python -m scripts.seed_phase4_relationships  # Neo4j nodes/edges + Postgres mirror rows (rel-e1..e5)
+docker exec cip-api python -m scripts.seed_phase6_priority       # 2 vehicles + graph edges + mirrors (alert priority demo)
+docker exec cip-api python -m scripts.seed_phase6_merge          # duplicate persons P1/P2 + protected + neutral (merge demo)
 ```
 
-## If docker compose fails
+All officer passwords are `Password1!` (admin/ADM-0001, analyst/ANL-0001,
+officer/DTO-0001, supervisor/SUP-0001, detective/DET-0001). Login field is
+`username_or_official_id` (username works).
 
-Most likely causes, in order of likelihood:
+## Smoke test (one request per phase)
 
-1. Ports 5432 / 7474 / 7687 / 8000 already in use locally — stop other
-   Postgres/Neo4j instances or change the port mapping in `docker-compose.yml`.
-2. `requirements.txt` version conflicts — I pinned versions based on what's
-   current as of my training, worth double-checking `pip install` doesn't
-   throw resolver errors before assuming the code itself is broken.
-3. GeoAlchemy2/PostGIS — the `postgis/postgis` image handles the extension
-   automatically, but if you swap to a bare `postgres` image you'll need
-   `CREATE EXTENSION postgis;` manually.
+```bash
+curl -X POST http://localhost:8000/api/v1/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"username_or_official_id":"admin","password":"Password1!"}'   # Sprint 1
+curl http://localhost:8000/api/v1/districts -H "Authorization: Bearer $TOKEN"                          # Phase 2
+curl http://localhost:8000/api/v1/dashboard/<CENTRAL_DISTRICT_ID> -H "Authorization: Bearer $TOKEN"    # Phase 3
+curl 'http://localhost:8000/api/v1/entities/search?q=Phase4' -H "Authorization: Bearer $TOKEN"         # Phase 4
+curl -X POST http://localhost:8000/api/v1/cases -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"case_number":"CASE-2026-9001","title":"smoke","district_id":"<EAST_DISTRICT_ID>"}'            # Phase 5
+# Phase 6: access exceptions (request + step-up approve), entity merge, confidence review
+```
 
-## What's stubbed vs. real
+## API conventions
 
-- **Real:** repo structure, model schema, Pydantic contract shapes, RBAC
-  dependency wiring, Docker orchestration, Alembic setup.
-- **Stub (returns placeholder data):** every route body. They're shape-correct
-  against `docs/decisions.md` and the brief's §8, but none of them touch the
-  database yet. That's Phase 1 onward — see the plan in chat / `docs/decisions.md`.
-
-## Next task after this runs successfully
-
-Phase 1: real auth — password verification against `Officer.hashed_password`,
-real MFA challenge issuance, real JWT in `/auth/login` + `/auth/mfa/verify`,
-and audit logging on every auth event. Everything downstream assumes this
-layer is real, so it goes first.
+- Base path: `/api/v1` (map and network routers mount directly under it:
+  `/districts`, `/entities/search`, … — not `/map/...`, `/network/...`).
+- Error envelope: `{"error": {"code", "message", "details"}}`.
+- Sensitive operations (case export, exception approval) require a fresh
+  step-up assertion: `POST /auth/step-up` then send it as
+  `X-Step-Up-Token` (see `docs/decisions/006`).
+- All product decisions and deferred items live in `docs/decisions/`
+  (001–012).
