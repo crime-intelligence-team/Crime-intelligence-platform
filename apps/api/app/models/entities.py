@@ -99,6 +99,7 @@ class Person(Base, ClassificationMixin, ProvenanceMixin, TimestampMixin):
     aliases = Column(Text, nullable=True)  # JSON-encoded list
     date_of_birth = Column(Date, nullable=True)
     is_protected_subject = Column(Integer, default=0)  # record-level protection flag
+    merged_into_id = Column(UUID(as_uuid=True), ForeignKey("persons.id"), nullable=True)  # set when absorbed by a merge (011); NULL = independent
 
 
 class Organization(Base, ClassificationMixin, ProvenanceMixin, TimestampMixin):
@@ -194,3 +195,42 @@ class RelationshipEdgeRef(Base, ClassificationMixin, TimestampMixin):
     effective_from = Column(DateTime(timezone=True), nullable=True)
     effective_to = Column(DateTime(timezone=True), nullable=True)
     case_id = Column(UUID(as_uuid=True), ForeignKey("cases.id"), nullable=True)
+
+
+class Alert(Base, ClassificationMixin, TimestampMixin):
+    """Intelligence-feed alert (brief 3, "Intelligence Feed — Alerts, new
+    cross-district links, resurfacing offenders, and significant changes").
+
+    Vocabulary verified against the brief in docs/decisions/007:
+    - resurfaced_offender: brief-derived ("resurfacing offenders")
+    - new_inter_district_link: brief-derived ("new cross-district links")
+    - confidence_change: inferred from "significant changes" (not literal)
+    - case_escalation: NOT brief-derived — deliberately dropped.
+
+    district_id is the alert subject's district (jurisdiction gate);
+    cross-district alerts carrying two districts are an open question
+    (minimal-viable: primary subject's district). Alerts with NULL
+    district are invisible to jurisdiction-scoped officers, consistent
+    with the platform's scoping semantics. No read/unread status field:
+    the brief never names one (006 §6 deferred surface).
+    """
+
+    __tablename__ = "alerts"
+
+    ALERT_TYPE_RESURFACED_OFFENDER = "resurfaced_offender"
+    ALERT_TYPE_NEW_INTER_DISTRICT_LINK = "new_inter_district_link"
+    ALERT_TYPE_CONFIDENCE_CHANGE = "confidence_change"
+    VALID_ALERT_TYPES = frozenset(
+        {
+            ALERT_TYPE_RESURFACED_OFFENDER,
+            ALERT_TYPE_NEW_INTER_DISTRICT_LINK,
+            ALERT_TYPE_CONFIDENCE_CHANGE,
+        }
+    )
+
+    id = uuid_pk_column()
+    type = Column(String, nullable=False)
+    summary = Column(Text, nullable=False)
+    entity_type = Column(String, nullable=True)
+    entity_id = Column(UUID(as_uuid=True), nullable=True)
+    district_id = Column(UUID(as_uuid=True), ForeignKey("districts.id"), nullable=True)

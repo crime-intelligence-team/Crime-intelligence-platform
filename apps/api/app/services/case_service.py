@@ -18,7 +18,7 @@ import uuid
 from datetime import datetime, timezone
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.classification import ROLE_MAX_CLASSIFICATION, classification_filter
@@ -37,6 +37,7 @@ from app.schemas.cases import (
     NoteSummary,
 )
 from app.services.district_service import get_accessible_district_ids
+from app.services.access_exception_service import exempt_case_ids
 
 CASE_NUMBER_RE = re.compile(r"^[A-Z0-9-]{3,32}$")
 
@@ -73,10 +74,24 @@ class InvalidFindingStateError(Exception):
     """Note finding_state outside {hypothesis, confirmed, disputed} (422 at the router)."""
 
 
-def _visible_case_stmt(visible_tiers: list[ClassificationLevel], accessible: list[UUID] | None):
+def _visible_case_stmt(
+    visible_tiers: list[ClassificationLevel],
+    accessible: list[UUID] | None,
+    exempt_case_ids: set[UUID] | None = None,
+):
+    """The case-visibility funnel shared by list/get/notes/export/note-create
+    (Phase 6 component 4, decision 002's reserved "second filter layer",
+    sanctioned narrow lift): when the officer is jurisdiction-filtered, an
+    approved-unexpired access exception ORs the exempt case ids into the
+    district scope. Tier filtering is untouched — an exception never
+    crosses the classification gate. Unrestricted roles have no district
+    filter, so the exemption is moot for them."""
     stmt = select(Case).where(Case.classification.in_(visible_tiers))
     if accessible is not None:
-        stmt = stmt.where(Case.district_id.in_(accessible))
+        scope = Case.district_id.in_(accessible)
+        if exempt_case_ids:
+            scope = or_(scope, Case.id.in_(exempt_case_ids))
+        stmt = stmt.where(scope)
     return stmt
 
 
@@ -111,7 +126,11 @@ def list_cases(
     validates status against Case.VALID_STATUSES before calling."""
     visible_tiers = classification_filter(officer.role)
     accessible = get_accessible_district_ids(officer)
-    stmt = _visible_case_stmt(visible_tiers, accessible)
+    stmt = _visible_case_stmt(
+        visible_tiers,
+        accessible,
+        exempt_case_ids=exempt_case_ids(db, officer),
+    )
     if status is not None:
         stmt = stmt.where(Case.status == status)
     total = db.execute(select(func.count()).select_from(stmt.subquery())).scalar() or 0
@@ -137,7 +156,11 @@ def get_case(
     visible_tiers = classification_filter(officer.role)
     accessible = get_accessible_district_ids(officer)
     case = db.execute(
-        _visible_case_stmt(visible_tiers, accessible).where(Case.id == case_id)
+        _visible_case_stmt(
+            visible_tiers,
+            accessible,
+            exempt_case_ids=exempt_case_ids(db, officer),
+        ).where(Case.id == case_id)
     ).scalar_one_or_none()
     return _to_detail(case) if case is not None else None
 
@@ -280,7 +303,11 @@ def list_notes(
     visible_tiers = classification_filter(officer.role)
     accessible = get_accessible_district_ids(officer)
     case = db.execute(
-        _visible_case_stmt(visible_tiers, accessible).where(Case.id == case_id)
+        _visible_case_stmt(
+            visible_tiers,
+            accessible,
+            exempt_case_ids=exempt_case_ids(db, officer),
+        ).where(Case.id == case_id)
     ).scalar_one_or_none()
     if case is None:
         return None
@@ -342,7 +369,11 @@ def export_case(
     visible_tiers = classification_filter(officer.role)
     accessible = get_accessible_district_ids(officer)
     case = db.execute(
-        _visible_case_stmt(visible_tiers, accessible).where(Case.id == case_id)
+        _visible_case_stmt(
+            visible_tiers,
+            accessible,
+            exempt_case_ids=exempt_case_ids(db, officer),
+        ).where(Case.id == case_id)
     ).scalar_one_or_none()
     if case is None:
         return None
@@ -408,7 +439,11 @@ def create_note(
     visible_tiers = classification_filter(officer.role)
     accessible = get_accessible_district_ids(officer)
     case = db.execute(
-        _visible_case_stmt(visible_tiers, accessible).where(Case.id == case_id)
+        _visible_case_stmt(
+            visible_tiers,
+            accessible,
+            exempt_case_ids=exempt_case_ids(db, officer),
+        ).where(Case.id == case_id)
     ).scalar_one_or_none()
     if case is None:
         return None

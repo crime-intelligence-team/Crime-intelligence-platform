@@ -1,13 +1,20 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.permissions import get_officer_permissions
 from app.core.security import create_access_token, decode_access_token, verify_password
 from app.models.entities import Officer
 from app.models.governance import AuditLogEntry
-from app.schemas.auth import CurrentUserResponse, LoginResponse, MfaVerifyResponse
+from app.schemas.auth import (
+    CurrentUserResponse,
+    LoginResponse,
+    MfaVerifyResponse,
+    StepUpRequest,
+    StepUpResponse,
+)
 
 
 def _write_audit_log(
@@ -225,4 +232,70 @@ def get_current_user_data(officer: Officer) -> CurrentUserResponse:
         role=officer.role.value,
         permissions=permissions,
         jurisdiction_scope=jurisdiction,
+    )
+
+
+def issue_step_up_assertion(
+    db: Session,
+    officer: Officer,
+    password: str,
+    otp_code: str | None = None,
+    ip_address: str | None = None,
+) -> StepUpResponse:
+    """Fresh re-authentication for sensitive actions (Phase 6 component 1).
+
+    The officer must already hold a live session (the router gates on
+    get_current_officer) — step-up is a re-assertion on top of a session,
+    never a login bypass. The password is re-verified against the officer's
+    own hash; when MFA is enabled, otp_code is required and validated with
+    the same non-empty check login MFA uses (parity: the OTP provider is
+    still fake — real verification is deferred with the provider, 006 §6).
+
+    The returned assertion is purpose=step_up, expires absolutely after
+    STEP_UP_EXPIRE_MINUTES (the sliding-session middleware only reissues
+    purpose=access tokens, so it is never refreshed), and is bound to this
+    officer's sub — require_step_up_auth rejects it on any other session.
+    """
+    if not verify_password(password, officer.hashed_password):
+        _write_audit_log(
+            db, actor_id=officer.id, action="step_up_failed",
+            detail="Invalid password", ip_address=ip_address,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "error": {
+                    "code": "invalid_credentials",
+                    "message": "Invalid password",
+                    "details": None,
+                }
+            },
+        )
+
+    if officer.mfa_enabled and (not otp_code or not otp_code.strip()):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": {
+                    "code": "invalid_otp",
+                    "message": "OTP code is required for step-up when MFA is enabled",
+                    "details": None,
+                }
+            },
+        )
+
+    now = datetime.now(timezone.utc)
+    token = create_access_token(
+        data={"sub": str(officer.id), "purpose": "step_up"},
+        expires_minutes=settings.STEP_UP_EXPIRE_MINUTES,
+    )
+    _write_audit_log(
+        db, actor_id=officer.id, action="step_up",
+        ip_address=ip_address,
+    )
+    return StepUpResponse(
+        step_up_token=token,
+        expires_at=(
+            now + timedelta(minutes=settings.STEP_UP_EXPIRE_MINUTES)
+        ).isoformat(),
     )

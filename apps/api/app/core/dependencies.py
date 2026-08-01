@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
@@ -106,13 +106,58 @@ def require_roles(*allowed_roles: Role):
     return dependency
 
 
-def require_step_up_auth(officer: Officer = Depends(get_current_officer)) -> Officer:
+def require_step_up_auth(
+    officer: Officer = Depends(get_current_officer),
+    step_up_token: str | None = Header(None, alias="X-Step-Up-Token"),
+) -> Officer:
     """
-    Placeholder hook for step-up auth required on export / policy override /
-    cross-district exception approval (brief 7.1). Phase 1 wires the real
-    re-auth challenge here; Phase 0 just marks the seam.
+    Real step-up gate (Phase 6 component 1): the request must carry a
+    fresh step-up assertion — issued by POST /auth/step-up (purpose=step_up,
+    STEP_UP_EXPIRE_MINUTES expiry, bound to the issuing officer's sub) —
+    in the X-Step-Up-Token header, in addition to the live session in
+    Authorization. 401 (not 403) on any failure: this is an
+    authentication failure, the same category as token errors, and no
+    existence information leaks.
+
+    The assertion expires absolutely: SlidingSessionMiddleware reissues
+    only purpose=access tokens, so the step-up assertion is never
+    refreshed the way the session token is — it must be re-earned (fresh
+    password re-verification) for every sensitive action window.
     """
-    # TODO(Phase 1): verify a recent step-up assertion, not just the base session.
+    if not step_up_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "error": {
+                    "code": "step_up_required",
+                    "message": "Step-up assertion required for this operation",
+                    "details": None,
+                }
+            },
+        )
+    payload = decode_access_token(step_up_token)
+    if payload is None or payload.get("purpose") != "step_up":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "error": {
+                    "code": "invalid_step_up",
+                    "message": "Step-up assertion is invalid or expired",
+                    "details": None,
+                }
+            },
+        )
+    if payload.get("sub") != str(officer.id):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "error": {
+                    "code": "invalid_step_up",
+                    "message": "Step-up assertion does not match the session officer",
+                    "details": None,
+                }
+            },
+        )
     return officer
 
 

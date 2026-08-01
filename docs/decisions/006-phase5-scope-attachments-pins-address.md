@@ -122,10 +122,14 @@ project; origin docs in parentheses. Grouped by kind:
 3. **Real officer hierarchy** — no `manager_id`/org table; the
    `supervisory_chain` note tier is a role-collapse (SUPERVISOR/
    ADMINISTRATOR), weaker than per-officer ancestry (006 §4).
-4. **inter_unit approval workflow** — AccessExceptionRequest exists as
-   model + stub endpoints (routers/admin.py), links to cases by string,
-   never to notes; `inter_unit_approved` is widest-tier until that
-   workflow is built (006 §4).
+4. **inter_unit approval workflow** — AccessExceptionRequest is now REAL
+   (Phase 6 component 4, 009): case-scoped, approve/deny/revoke,
+   step-up-gated approval, inline expiry. Still open: it links to cases
+   by string and NEVER to notes; `inter_unit_approved` note visibility
+   remains the widest tier (case-team gate, 009); case renumbering
+   would orphan exceptions (no renumbering path exists). Exception
+   scope is CASE-scoped only — district-scoped exceptions were
+   deliberately not built (009).
 
 ### Scope decisions (closed by decision, not by omission)
 
@@ -137,13 +141,59 @@ project; origin docs in parentheses. Grouped by kind:
 
 ### Deferred engines / seams (explicitly later-phase)
 
-8. **Per-field redaction engine** (RedactionPolicyDecision) — Phase 6;
-   export and inter-unit sharing use record-level exclusion until then
-   (004/006 §5, core/classification.py).
-9. **MFA verify + step-up re-auth** — Phase 0 seams; `require_step_up_auth`
-   is a pass-through placeholder ("Phase 1 wires the real re-auth"); the
-   export endpoint gates on it today.
-10. **Alerts / alert priority** — stubs, prioritization deferred (001).
+8. **Redaction engine scope (LIVE, confirmed at Phase 6 close-out)** — the
+   REAL RedactionPolicyDecision engine (component 3, 008) is used ONLY by
+   case export (post-serialize masking + `redact_note_ids` request
+   option). Every OTHER read path — dashboard, entity detail, note
+   lists, search — uses the coarse classification-tier gate and NEVER
+   consults RedactionPolicyDecision. Export with no active rules is
+   byte-identical to pre-component-3 behavior (re-verified at
+   close-out). Extending the engine to more read paths is open work,
+   not a latent bug.
+9. **MFA verify** — the challenge endpoint remains an OTP placeholder
+   stub. STEP-UP re-auth is REAL since component 1 (001):
+   `require_step_up_auth()` performs an actual assertion + same-password
+   check and precedes permission checks; export, exception approval and
+   similar gates use it. Real MFA (TOTP) remains a Phase 0 seam.
+10. **Alerts / alert priority** — REAL since component 2 (007): `alerts`
+    table, alert:read/alert:manage, degree-based priority from Neo4j +
+    mirrors. Live trigger today: ONLY `confidence_change` (component 6,
+    010 — fires on accepted edge/zone-score disputes).
+    `resurfaced_offender` and `new_inter_district_link` remain
+    schema-supported but UNTRIGGERED — no ingestion path exists to fire
+    them (007).
 11. **Case status vocabulary** — `{open, closed}` is the minimal
     complement of the only state the brief names ("open"); no wider
     vocabulary exists (006 §2 of this file / component 2 receipts).
+
+### Phase 6 additions (LIVE gaps, not historical notes)
+
+12. **Neo4j edge re-pointing on entity merge — LIVE DEFERRED GAP**
+    (component 5, 011). A merge hides the absorbed person's relational
+    row (merged_into_id) but does NOT re-point the graph: Neo4j
+    relationships keyed by the absorbed entity id remain reachable only
+    by that id, which 404s through the REST API. Readers using the
+    graph (relationship list via network_service) can still surface
+    edges anchored on an absorbed id. Postgres mirrors of those edges
+    survive the merge untouched (they are real data) — a confidence
+    review against an absorbed entity's edge succeeds (verified at
+    close-out: no 404, no crash; the mirror remains the writable
+    target). Re-pointing absorbed→primary at graph-query time is open
+    work; until then stale graph edges are the documented state.
+13. **Confidence review mirror-only write path** (component 6, 010) —
+    an accepted dispute updates ONLY the Postgres mirror (score, band,
+    verification_status). Verified safe on every CURRENT read path:
+    decision 000 removed classification/confidence/verification
+    properties from the graph entirely; `network_service._relationship_out`
+    reads confidence exclusively from `RelationshipEdgeRef` (checked at
+    close-out). No current display can go stale. A future feature that
+    stores confidence on Neo4j edges must sync or re-derive it — that
+    sync is deferred.
+14. **Entity resolution reduced-scope reversal** (component 5, 011) —
+    reversal un-marks the merge (visibility pointer) and stamps
+    reversed_at; merged FIELD COPIES stay on the primary (no data
+    undo). An accidental merge is recovered by reversal + manual split,
+    not by an automated inverse.
+15. **Redaction scope asymmetry re-stated** — see item 8: engine = export
+    only; everything else tier-gated. Kept here too because it is the
+    most-cited Phase 6 scope line.

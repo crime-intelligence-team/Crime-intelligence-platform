@@ -10,12 +10,13 @@ from app.schemas.cases import (
     CaseCreate,
     CaseDetail,
     CaseSummary,
+    ExportRequest,
     ExportResponse,
     NoteCreate,
     NoteSummary,
 )
 from app.schemas.common import PaginatedResponse
-from app.services import case_service
+from app.services import case_service, redaction_service
 
 router = APIRouter(prefix="/api/v1/cases", tags=["cases"])
 
@@ -276,6 +277,7 @@ def add_attachment(
 def export_case(
     case_id: str,
     request: Request,
+    payload: ExportRequest | None = None,
     officer: Officer = Depends(require_step_up_auth),
     _pm: Officer = Depends(require_permissions("export:case")),
     db: Session = Depends(get_db),
@@ -285,7 +287,14 @@ def export_case(
     the notes visible to the exporting officer, labeled with the highest
     tier of the included content; each export writes an AuditLogEntry
     (who/what/when) and is rejected only by the unchanged step-up + export
-    permission gates."""
+    permission gates.
+
+    Phase 6 component 3 (decision 008 Q-A, freeze narrowly lifted for this
+    handler ONLY): the request gains an OPTIONAL ExportRequest body
+    (ad-hoc redact_note_ids) and the artifact passes through
+    redaction_service.apply_redactions — which post-processes the result
+    of the untouched case_service.export_case and returns it byte-identical
+    when no rule fires and no ad-hoc ids are given."""
     try:
         case_uuid = UUID(case_id)
     except ValueError:
@@ -312,4 +321,10 @@ def export_case(
                 }
             },
         )
-    return result
+    return redaction_service.apply_redactions(
+        db=db,
+        officer=officer,
+        export=result,
+        redact_note_ids=payload.redact_note_ids if payload else None,
+        ip_address=ip_address,
+    )

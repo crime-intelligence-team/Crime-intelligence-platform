@@ -18,6 +18,13 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     SESSION_INACTIVITY_EXPIRE_MINUTES: int = 15
     SESSION_ABSOLUTE_EXPIRE_HOURS: int = 12
+    STEP_UP_EXPIRE_MINUTES: int = 5
+
+    # Priority entity computation (Phase 6 component 2): relationship-degree
+    # threshold (mirror rows at verified/probable band) for an entity to
+    # qualify as "priority". Value inferred — the brief never defines
+    # "high-priority" (docs/decisions/007).
+    PRIORITY_DEGREE_THRESHOLD: int = 3
 
     # App
     ENVIRONMENT: str = "development"

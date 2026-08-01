@@ -62,6 +62,11 @@ def _entity_union(
             table.columns.classification.in_(visible_tiers),
             or_(*(field.ilike(like) for field in fields)),
         )
+        if entity_type == "person":
+            # Component 5 (011): an absorbed person's ROW is hidden from
+            # search; its NAME is retained on the surviving record's
+            # aliases, so name search still finds the merged identity.
+            branch = branch.where(table.columns.merged_into_id.is_(None))
         if entity_type == "address" and accessible is not None:
             branch = branch.where(Address.district_id.in_(accessible))
         branches.append(branch)
@@ -139,6 +144,7 @@ def get_entity(
         select(Person).where(
             Person.id == entity_id,
             Person.classification.in_(visible_tiers),
+            Person.merged_into_id.is_(None),  # 011: absorbed rows are not directly reachable
         )
     ).scalar_one_or_none()
     if person is not None:

@@ -29,7 +29,9 @@ class Confidence(BaseModel):
 class RedactedField(BaseModel):
     """
     Contract rule: redacted fields return this shape instead of being omitted.
-    reason is "policy" (rule says hide it) or "no_access" (this viewer lacks clearance).
+    reason is "policy" (a rule says hide it), "no_access" (this viewer lacks
+    clearance), or "manual" (an officer explicitly redacted it for this
+    export — Phase 6 component 3, ad-hoc per-export redaction).
     """
 
     redacted: bool = True

@@ -12,7 +12,7 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-from app.schemas.common import ClassificationLevel
+from app.schemas.common import ClassificationLevel, RedactedField
 
 
 class CaseCreate(BaseModel):
@@ -39,7 +39,7 @@ class CaseSummary(BaseModel):
 class CaseDetail(CaseSummary):
     """Detail shape: summary fields plus the case body."""
 
-    summary: str | None
+    summary: RedactedField | str | None
     lead_officer_id: str | None
 
 
@@ -51,15 +51,60 @@ class NoteCreate(BaseModel):
 
 
 class NoteSummary(BaseModel):
-    """Every note response carries classification (constraint)."""
+    """Every note response carries classification (constraint).
+
+    body is `RedactedField | str`: the per-field redaction engine
+    (Phase 6 component 3) masks the payload of otherwise-visible notes
+    in the EXPORT pipeline only — rules produce reason="policy", ad-hoc
+    per-export masking produces reason="manual". The read path never
+    emits these; redaction hides content inside a record that already
+    passed the tier gate, it does not drop the record."""
 
     id: str
     case_id: str
     author_id: str
-    body: str
+    body: RedactedField | str
     visibility: str
     finding_state: str | None
     classification: ClassificationLevel
+    created_at: str | None
+
+
+class ExportRequest(BaseModel):
+    """Optional body for POST /cases/{id}/export. Policy rules apply to
+    every export regardless of this payload; redact_note_ids masks the
+    listed notes in THIS export only (brief 7.10 supervisor user story
+    "redaction where needed" — ad-hoc, non-persisted; the export_redaction
+    audit entry records it). Note ids outside the export's visible notes
+    are silently ignored (nothing to mask)."""
+
+    redact_note_ids: list[UUID] | None = None
+
+
+class RedactionPolicyCreate(BaseModel):
+    """Admin-defined export redaction rule (brief 7.10 "export policy and
+    redaction rules"; answers the PRD open question "which fields require
+    mandatory redaction in shared exports?" as per-deployment config).
+
+    Fires when the target record's classification tier is at or above
+    min_classification. entity_type/field vocabulary is validated against
+    RedactionPolicyDecision.REDACTION_ENTITY_TYPES / REDACTION_FIELDS."""
+
+    entity_type: str
+    field: str
+    min_classification: ClassificationLevel
+    reason: str
+
+
+class RedactionPolicyResponse(BaseModel):
+    id: str
+    entity_type: str
+    field: str
+    min_classification: ClassificationLevel
+    decision: str
+    reason: str
+    active: bool
+    created_by_id: str
     created_at: str | None
 
 

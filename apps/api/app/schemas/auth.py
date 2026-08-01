@@ -23,6 +23,28 @@ class MfaVerifyResponse(BaseModel):
     token_type: str = "bearer"
 
 
+class StepUpRequest(BaseModel):
+    """Fresh re-authentication for sensitive actions (brief 7.1, 7.11):
+    the password is re-verified against the session officer's hash;
+    otp_code is required when the officer has MFA enabled, validated with
+    the same (currently provider-fake) check login MFA uses — parity is
+    the property, real OTP verification is deferred with the provider."""
+
+    password: str
+    otp_code: str | None = None
+
+
+class StepUpResponse(BaseModel):
+    """Short-lived step-up assertion, bound to the session officer.
+    purpose=step_up tokens are never reissued by the sliding-session
+    middleware (it only refreshes purpose=access), so the assertion
+    expires absolutely and requires fresh re-auth every time."""
+
+    step_up_token: str
+    expires_at: str
+    token_type: str = "step-up"
+
+
 class CurrentUserResponse(BaseModel):
     id: str
     username: str

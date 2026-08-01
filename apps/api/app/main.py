@@ -4,7 +4,18 @@ from fastapi.responses import JSONResponse
 
 from app.core.config import settings
 from app.core.middleware import SlidingSessionMiddleware
-from app.routers import admin, auth, cases, dashboard, map as map_router, network
+from app.routers import (
+    access_exceptions,
+    admin,
+    alerts,
+    auth,
+    cases,
+    dashboard,
+    entity_resolution,
+    map as map_router,
+    network,
+    redactions,
+)
 
 app = FastAPI(
     title="Crime Intelligence Platform API",
@@ -40,6 +51,10 @@ app.include_router(map_router.router)
 app.include_router(dashboard.router)
 app.include_router(network.router)
 app.include_router(cases.router)
+app.include_router(alerts.router)
+app.include_router(redactions.router)
+app.include_router(access_exceptions.router)
+app.include_router(entity_resolution.router)
 app.include_router(admin.router)
 
 

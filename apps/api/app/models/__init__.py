@@ -11,6 +11,7 @@ from app.models.entities import (  # noqa: F401
     Case,
     Note,
     RelationshipEdgeRef,
+    Alert,
 )
 from app.models.governance import (  # noqa: F401
     AccessExceptionRequest,

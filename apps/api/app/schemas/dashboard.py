@@ -28,19 +28,34 @@ class Hotspot(BaseModel):
 
 
 class PriorityEntity(BaseModel):
+    """Read shape for computed priority entities (Phase 6 component 2).
+    Type vocabulary aligned to computable signals: person, gang, vehicle,
+    device; repeat_offender is a defined but currently non-computable type
+    (no arrest/repeat data exists — docs/decisions/007); address was not
+    brief-derived for the priority list and was dropped."""
+
     id: str
-    type: str  # suspect | gang | repeat_offender | vehicle | phone | address
+    type: str  # person | gang | vehicle | device | repeat_offender
     label: str
     classification: ClassificationLevel
     confidence: Confidence | None = None
 
 
 class Alert(BaseModel):
+    """Intelligence-feed alert. Vocabulary verified against the brief in
+    docs/decisions/007: resurfaced_offender, new_inter_district_link,
+    confidence_change (case_escalation deliberately dropped — zero brief
+    support). entity_type/entity_id/district_id are the alert subject
+    (nullable — the stub dashboard shape predates the real table)."""
+
     id: str
-    type: str  # resurfaced_offender | new_inter_district_link | confidence_change | case_escalation
+    type: str
     summary: str
     classification: ClassificationLevel
     created_at: str
+    entity_type: str | None = None
+    entity_id: str | None = None
+    district_id: str | None = None
 
 
 class DashboardResponse(BaseModel):

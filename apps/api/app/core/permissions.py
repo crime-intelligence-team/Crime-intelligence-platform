@@ -14,7 +14,7 @@ ROLE_PERMISSIONS: dict[Role, list[str]] = {
     Role.ANALYST: [
         "case:read", "entity:read", "entity:resolve", "search:basic",
         "search:advanced", "map:view", "relationship:view", "dashboard:view",
-        "export:analysis", "risk:view", "risk:compute",
+        "export:analysis", "risk:view", "risk:compute", "alert:read",
     ],
     Role.SUPERVISOR: [
         "case:read", "case:write", "entity:read", "entity:write",
@@ -22,7 +22,7 @@ ROLE_PERMISSIONS: dict[Role, list[str]] = {
         "note:create", "note:read", "export:case", "export:analysis",
         "relationship:view", "dashboard:view", "risk:view", "risk:compute",
         "officer:view", "audit:view", "confidence:review",
-        "exception:approve",
+        "exception:approve", "alert:read",
     ],
     Role.ADMINISTRATOR: [
         "case:read", "case:write", "entity:read", "entity:write",
@@ -30,9 +30,9 @@ ROLE_PERMISSIONS: dict[Role, list[str]] = {
         "note:create", "note:read", "export:case", "export:analysis",
         "relationship:view", "dashboard:view", "risk:view", "risk:compute",
         "officer:view", "officer:manage", "audit:view",
-        "confidence:review", "redaction:manage",
+        "confidence:review", "redaction:manage", "entity:merge",
         "exception:approve", "system:configure",
-        "classification:override",
+        "classification:override", "alert:read",
     ],
 }
 
