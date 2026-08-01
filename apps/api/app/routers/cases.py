@@ -1,47 +1,266 @@
-from fastapi import APIRouter, Depends, Query
+from uuid import UUID
 
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from sqlalchemy.orm import Session
+
+from app.core.database import get_db
 from app.core.dependencies import get_current_officer, require_permissions, require_step_up_auth
-from app.models.entities import Officer
+from app.models.entities import Case, Note, Officer
+from app.schemas.cases import (
+    CaseCreate,
+    CaseDetail,
+    CaseSummary,
+    ExportResponse,
+    NoteCreate,
+    NoteSummary,
+)
 from app.schemas.common import PaginatedResponse
+from app.services import case_service
 
 router = APIRouter(prefix="/api/v1/cases", tags=["cases"])
 
 
-@router.get("", response_model=PaginatedResponse[dict])
+@router.get("", response_model=PaginatedResponse[CaseSummary])
 def list_cases(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
+    status_filter: str | None = Query(None, alias="status"),
     officer: Officer = Depends(get_current_officer),
     _pm: Officer = Depends(require_permissions("case:read")),
+    db: Session = Depends(get_db),
 ):
-    return PaginatedResponse(items=[], total=0, page=page, page_size=page_size)
+    if status_filter is not None and status_filter not in Case.VALID_STATUSES:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": {
+                    "code": "invalid_status",
+                    "message": "Case status is not valid",
+                    "details": {"valid_statuses": sorted(Case.VALID_STATUSES)},
+                }
+            },
+        )
+    items, total = case_service.list_cases(
+        db=db, officer=officer, page=page, page_size=page_size, status=status_filter
+    )
+    return PaginatedResponse(items=items, total=total, page=page, page_size=page_size)
 
 
-@router.post("")
+@router.post("", response_model=CaseDetail, status_code=status.HTTP_201_CREATED)
 def create_case(
+    payload: CaseCreate,
     officer: Officer = Depends(get_current_officer),
     _pm: Officer = Depends(require_permissions("case:write")),
+    db: Session = Depends(get_db),
 ):
-    return {"id": "stub-case-id", "_stub": True}
+    try:
+        return case_service.create_case(db=db, officer=officer, payload=payload)
+    except case_service.InvalidCaseNumberError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": {
+                    "code": "invalid_case_number",
+                    "message": "Case number must be 3-32 characters of letters, digits, or hyphens",
+                }
+            },
+        )
+    except case_service.InvalidCaseStatusError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": {
+                    "code": "invalid_status",
+                    "message": "Case status is not valid",
+                    "details": {"valid_statuses": sorted(Case.VALID_STATUSES)},
+                }
+            },
+        )
+    except case_service.CaseNumberTakenError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "error": {
+                    "code": "case_number_taken",
+                    "message": "A case with this case number already exists",
+                }
+            },
+        )
+    except case_service.DistrictNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": {
+                    "code": "district_not_found",
+                    "message": "District does not exist",
+                }
+            },
+        )
+    except case_service.DistrictNotInJurisdictionError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": {
+                    "code": "district_not_in_jurisdiction",
+                    "message": "District is outside this officer's jurisdiction",
+                }
+            },
+        )
+    except case_service.ClassificationExceedsClearanceError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": {
+                    "code": "classification_exceeds_clearance",
+                    "message": "Case classification exceeds this officer's clearance",
+                }
+            },
+        )
 
 
-@router.get("/{case_id}")
+@router.get("/{case_id}", response_model=CaseDetail)
 def get_case(
     case_id: str,
     officer: Officer = Depends(get_current_officer),
     _pm: Officer = Depends(require_permissions("case:read")),
+    db: Session = Depends(get_db),
 ):
-    return {"id": case_id, "classification": "restricted_operational", "_stub": True}
+    try:
+        case_uuid = UUID(case_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": {
+                    "code": "invalid_uuid",
+                    "message": "Case ID is not a valid UUID",
+                }
+            },
+        )
+    result = case_service.get_case(db=db, officer=officer, case_id=case_uuid)
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "error": {
+                    "code": "case_not_found",
+                    "message": "Case not found or not accessible to this officer",
+                }
+            },
+        )
+    return result
 
 
-@router.post("/{case_id}/notes")
+@router.get("/{case_id}/notes", response_model=PaginatedResponse[NoteSummary])
+def list_notes(
+    case_id: str,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    officer: Officer = Depends(get_current_officer),
+    _pm: Officer = Depends(require_permissions("note:read")),
+    db: Session = Depends(get_db),
+):
+    try:
+        case_uuid = UUID(case_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": {
+                    "code": "invalid_uuid",
+                    "message": "Case ID is not a valid UUID",
+                }
+            },
+        )
+    result = case_service.list_notes(
+        db=db, officer=officer, case_id=case_uuid, page=page, page_size=page_size
+    )
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "error": {
+                    "code": "case_not_found",
+                    "message": "Case not found or not accessible to this officer",
+                }
+            },
+        )
+    items, total = result
+    return PaginatedResponse(items=items, total=total, page=page, page_size=page_size)
+
+
+@router.post("/{case_id}/notes", response_model=NoteSummary, status_code=status.HTTP_201_CREATED)
 def add_note(
     case_id: str,
+    payload: NoteCreate,
     officer: Officer = Depends(get_current_officer),
     _pm: Officer = Depends(require_permissions("note:create")),
+    db: Session = Depends(get_db),
 ):
-    """Visibility tiers per brief 7.7: private / case_team / supervisory_chain / inter_unit_approved."""
-    return {"id": "stub-note-id", "case_id": case_id, "_stub": True}
+    """Visibility tiers per brief 7.7 — enforcement semantics in
+    case_service._note_visible; minimum-viable interpretations flagged in
+    docs/decisions/006."""
+    try:
+        case_uuid = UUID(case_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": {
+                    "code": "invalid_uuid",
+                    "message": "Case ID is not a valid UUID",
+                }
+            },
+        )
+    try:
+        result = case_service.create_note(
+            db=db, officer=officer, case_id=case_uuid, payload=payload
+        )
+    except case_service.InvalidVisibilityError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": {
+                    "code": "invalid_visibility",
+                    "message": "Note visibility is not valid",
+                    "details": {
+                        "valid_visibilities": sorted(Note.VALID_VISIBILITIES)
+                    },
+                }
+            },
+        )
+    except case_service.InvalidFindingStateError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": {
+                    "code": "invalid_finding_state",
+                    "message": "Note finding state is not valid",
+                    "details": {"valid_states": sorted(Note.FINDING_STATES)},
+                }
+            },
+        )
+    except case_service.ClassificationExceedsClearanceError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": {
+                    "code": "classification_exceeds_clearance",
+                    "message": "Note classification exceeds this officer's clearance",
+                }
+            },
+        )
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "error": {
+                    "code": "case_not_found",
+                    "message": "Case not found or not accessible to this officer",
+                }
+            },
+        )
+    return result
 
 
 @router.post("/{case_id}/attachments")
@@ -53,11 +272,44 @@ def add_attachment(
     return {"id": "stub-attachment-id", "case_id": case_id, "_stub": True}
 
 
-@router.post("/{case_id}/export")
+@router.post("/{case_id}/export", response_model=ExportResponse)
 def export_case(
     case_id: str,
+    request: Request,
     officer: Officer = Depends(require_step_up_auth),
     _pm: Officer = Depends(require_permissions("export:case")),
+    db: Session = Depends(get_db),
 ):
-    """Every export: policy redaction applied, classification labeled, initiator/time recorded (brief 7.11)."""
-    return {"export_id": "stub-export-id", "case_id": case_id, "_stub": True}
+    """Every export: policy redaction applied, classification labeled,
+    initiator/time recorded (brief 7.11). The document is the case plus
+    the notes visible to the exporting officer, labeled with the highest
+    tier of the included content; each export writes an AuditLogEntry
+    (who/what/when) and is rejected only by the unchanged step-up + export
+    permission gates."""
+    try:
+        case_uuid = UUID(case_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": {
+                    "code": "invalid_uuid",
+                    "message": "Case ID is not a valid UUID",
+                }
+            },
+        )
+    ip_address = request.client.host if request.client else None
+    result = case_service.export_case(
+        db=db, officer=officer, case_id=case_uuid, ip_address=ip_address
+    )
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "error": {
+                    "code": "case_not_found",
+                    "message": "Case not found or not accessible to this officer",
+                }
+            },
+        )
+    return result

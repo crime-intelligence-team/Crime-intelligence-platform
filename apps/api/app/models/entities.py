@@ -137,6 +137,14 @@ class Case(Base, ClassificationMixin, ProvenanceMixin, TimestampMixin):
 
     __tablename__ = "cases"
 
+    # Phase 5 vocabulary: "open" is the only state the brief names (the
+    # dashboard open-cases KPI reads status == "open"); "closed" is the
+    # minimal complement. Adding states later is backward-compatible —
+    # the column is a free string and the KPI only ever reads "open".
+    STATUS_OPEN = "open"
+    STATUS_CLOSED = "closed"
+    VALID_STATUSES = frozenset({STATUS_OPEN, STATUS_CLOSED})
+
     id = uuid_pk_column()
     case_number = Column(String, unique=True, nullable=False)
     title = Column(String, nullable=False)
@@ -153,8 +161,12 @@ class Note(Base, ClassificationMixin, TimestampMixin):
 
     VISIBILITY_PRIVATE = "private_author"
     VISIBILITY_CASE_TEAM = "case_team"
-    VISIBILITY_SUPERVISORY = "supervisory_chain"
+    VISIBILITY_SUPERVISORY_CHAIN = "supervisory_chain"
     VISIBILITY_INTER_UNIT = "inter_unit_approved"
+    VALID_VISIBILITIES = frozenset(
+        {VISIBILITY_PRIVATE, VISIBILITY_CASE_TEAM, VISIBILITY_SUPERVISORY_CHAIN, VISIBILITY_INTER_UNIT}
+    )
+    FINDING_STATES = frozenset({"hypothesis", "confirmed", "disputed"})
 
     id = uuid_pk_column()
     case_id = Column(UUID(as_uuid=True), ForeignKey("cases.id"), nullable=False)
