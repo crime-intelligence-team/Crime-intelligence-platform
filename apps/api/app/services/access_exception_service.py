@@ -164,7 +164,10 @@ def _transition(
     request_id: UUID,
     target: str,
 ) -> AccessExceptionRequest:
-    req = db.get(AccessExceptionRequest, request_id)
+    # Phase 7 component 2: lock the row so concurrent transitions of the
+    # same request serialize — the second caller sees the committed status
+    # and fails with InvalidTransitionError instead of double-approving.
+    req = db.get(AccessExceptionRequest, request_id, with_for_update=True)
     if req is None:
         raise AccessExceptionNotFoundError(str(request_id))
     if req.requested_by_id == officer.id:

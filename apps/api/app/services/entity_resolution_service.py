@@ -115,10 +115,14 @@ def merge_entities(
     if payload.primary_entity_id == payload.absorbed_entity_id:
         raise SameEntityError()
 
-    primary = db.get(Person, payload.primary_entity_id)
+    # Phase 7 component 2: lock both person rows so concurrent merges of
+    # the same absorbed person serialize — the second caller sees
+    # merged_into_id set and fails with AlreadyMergedError (backstopped
+    # by the partial unique index, migration 7d2c1e4f9b3a).
+    primary = db.get(Person, payload.primary_entity_id, with_for_update=True)
     if primary is None:
         raise EntityNotFoundError()
-    absorbed = db.get(Person, payload.absorbed_entity_id)
+    absorbed = db.get(Person, payload.absorbed_entity_id, with_for_update=True)
     if absorbed is None:
         raise EntityNotFoundError()
 
