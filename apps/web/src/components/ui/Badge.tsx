@@ -2,17 +2,17 @@ import type { Severity } from '../../types'
 
 // ── SeverityBadge ────────────────────────────────────────────────────────────
 const severityConfig: Record<Severity, { label: string; className: string }> = {
-  critical: { label: 'CRITICAL',  className: 'bg-severity-critical/15 text-severity-critical border border-severity-critical/30' },
-  elevated: { label: 'ELEVATED',  className: 'bg-severity-elevated/15 text-severity-elevated border border-severity-elevated/30' },
-  low:      { label: 'LOW',       className: 'bg-severity-low/15       text-severity-low       border border-severity-low/30'      },
-  info:     { label: 'INFO',      className: 'bg-severity-info/15      text-severity-info      border border-severity-info/30'     },
+  critical: { label: 'CRITICAL',  className: 'bg-severity-tint-critical text-severity-critical border border-severity-critical/30' },
+  elevated: { label: 'ELEVATED',  className: 'bg-severity-tint-high text-severity-high border border-severity-high/30' },
+  low:      { label: 'LOW',       className: 'bg-severity-tint-low text-severity-low border border-severity-low/30'      },
+  info:     { label: 'INFO',      className: 'bg-severity-tint-info text-severity-info border border-severity-info/30'     },
 }
 
 interface SeverityBadgeProps { severity: Severity; className?: string }
 export function SeverityBadge({ severity, className = '' }: SeverityBadgeProps) {
   const { label, className: sc } = severityConfig[severity]
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold tracking-wider ${sc} ${className}`}>
+    <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-sm text-xs font-semibold tracking-wider ${sc} ${className}`}>
       <span className="w-1.5 h-1.5 rounded-full bg-current" />
       {label}
     </span>
@@ -27,7 +27,7 @@ const categoryLabels: Record<string, string> = {
 interface CategoryBadgeProps { category: string; className?: string }
 export function CategoryBadge({ category, className = '' }: CategoryBadgeProps) {
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium tracking-wider bg-surface-hover text-sentinel-300 border border-surface-border ${className}`}>
+    <span className={`inline-flex items-center px-3 py-1 rounded-sm text-xs font-semibold tracking-wider bg-bg-surface-2 text-text-secondary border border-border-default ${className}`}>
       {categoryLabels[category] ?? category.toUpperCase()}
     </span>
   )
@@ -36,11 +36,11 @@ export function CategoryBadge({ category, className = '' }: CategoryBadgeProps) 
 // ── RiskScoreBadge ────────────────────────────────────────────────────────────
 interface RiskScoreBadgeProps { score: number; className?: string }
 export function RiskScoreBadge({ score, className = '' }: RiskScoreBadgeProps) {
-  const color = score >= 80 ? 'bg-severity-critical/20 text-severity-critical border-severity-critical/40'
-              : score >= 50 ? 'bg-severity-elevated/20 text-severity-elevated border-severity-elevated/40'
-              : 'bg-surface-hover text-sentinel-300 border-surface-border'
+  const color = score >= 80 ? 'bg-severity-tint-critical text-severity-critical border-severity-critical/40'
+              : score >= 50 ? 'bg-severity-tint-high text-severity-high border-severity-high/40'
+              : 'bg-bg-surface-2 text-text-secondary border-border-default'
   return (
-    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded border text-[11px] font-mono font-medium ${color} ${className}`}>
+    <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-sm border text-xs font-mono font-medium ${color} ${className}`}>
       {score >= 80 && <span className="w-1.5 h-1.5 rounded-full bg-current" />}
       {score}
     </span>
@@ -50,16 +50,16 @@ export function RiskScoreBadge({ score, className = '' }: RiskScoreBadgeProps) {
 // ── StatusDot ─────────────────────────────────────────────────────────────────
 const dotColors: Record<string, string> = {
   critical: 'bg-severity-critical',
-  elevated: 'bg-severity-elevated',
-  active:   'bg-accent-emerald',
-  normal:   'bg-sentinel-400',
-  offline:  'bg-sentinel-600',
-  warning:  'bg-severity-elevated',
+  elevated: 'bg-severity-high',
+  active:   'bg-severity-low',
+  normal:   'bg-text-tertiary',
+  offline:  'bg-text-disabled',
+  warning:  'bg-severity-medium',
 }
 interface StatusDotProps { status: string; pulse?: boolean; size?: 'sm' | 'md' }
 export function StatusDot({ status, pulse = false, size = 'sm' }: StatusDotProps) {
   const sz = size === 'sm' ? 'w-2 h-2' : 'w-2.5 h-2.5'
-  const color = dotColors[status] ?? 'bg-sentinel-400'
+  const color = dotColors[status] ?? 'bg-text-tertiary'
   return (
     <span className="relative inline-flex">
       <span className={`${sz} rounded-full ${color} ${pulse ? 'animate-pulse' : ''}`} />
@@ -70,21 +70,21 @@ export function StatusDot({ status, pulse = false, size = 'sm' }: StatusDotProps
 // ── AuditStatusBadge ──────────────────────────────────────────────────────────
 interface AuditStatusBadgeProps { status: 'success' | 'denied' | 'pending' }
 export function AuditStatusBadge({ status }: AuditStatusBadgeProps) {
-  if (status === 'success') return <span className="flex items-center gap-1 text-accent-emerald text-[12px]">✓ Success</span>
-  if (status === 'denied')  return <span className="flex items-center gap-1 text-sentinel-400 text-[12px]">⊗ Denied</span>
-  return <span className="text-sentinel-400 text-[12px]">Pending</span>
+  if (status === 'success') return <span className="flex items-center gap-1 text-severity-low text-xs font-medium">✓ Success</span>
+  if (status === 'denied')  return <span className="flex items-center gap-1 text-text-secondary text-xs font-medium">⊗ Denied</span>
+  return <span className="text-text-tertiary text-xs font-medium">Pending</span>
 }
 
 // ── AuditRiskBadge ─────────────────────────────────────────────────────────────
 interface AuditRiskBadgeProps { risk: 'high' | 'medium' | 'low' }
 export function AuditRiskBadge({ risk }: AuditRiskBadgeProps) {
   const map = {
-    high:   'bg-severity-critical/15 text-severity-critical border-severity-critical/30',
-    medium: 'bg-severity-elevated/15 text-severity-elevated border-severity-elevated/30',
-    low:    'bg-surface-hover text-sentinel-400 border-surface-border',
+    high:   'bg-severity-tint-critical text-severity-critical border-severity-critical/30',
+    medium: 'bg-severity-tint-high text-severity-high border-severity-high/30',
+    low:    'bg-bg-surface-2 text-text-tertiary border-border-default',
   }
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border text-[10px] font-medium tracking-wider ${map[risk]}`}>
+    <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-sm border text-xs font-semibold tracking-wider ${map[risk]}`}>
       {risk === 'high' && <span className="w-1.5 h-1.5 rounded-full bg-current" />}
       {risk.charAt(0).toUpperCase() + risk.slice(1)}
     </span>
@@ -95,13 +95,13 @@ export function AuditRiskBadge({ risk }: AuditRiskBadgeProps) {
 interface NodeIntegrityBadgeProps { status: 'healthy' | 'degraded' | 'compromised' | 'offline' }
 export function NodeIntegrityBadge({ status }: NodeIntegrityBadgeProps) {
   const map = {
-    healthy: 'bg-accent-emerald/10 text-accent-emerald border-accent-emerald/30',
-    degraded: 'bg-severity-elevated/15 text-severity-elevated border-severity-elevated/30',
-    compromised:  'bg-severity-critical/10 text-severity-critical border-severity-critical/30',
-    offline: 'bg-surface-hover text-sentinel-400 border-surface-border',
+    healthy: 'bg-severity-tint-low text-severity-low border-severity-low/30',
+    degraded: 'bg-severity-tint-high text-severity-high border-severity-high/30',
+    compromised:  'bg-severity-tint-critical text-severity-critical border-severity-critical/30',
+    offline: 'bg-bg-surface-2 text-text-tertiary border-border-default',
   }
   return (
-    <span className={`px-2.5 py-0.5 rounded border text-[10px] font-semibold tracking-wider ${map[status]}`}>
+    <span className={`px-3 py-1 rounded-sm border text-xs font-semibold tracking-wider ${map[status]}`}>
       {status.toUpperCase()}
     </span>
   )

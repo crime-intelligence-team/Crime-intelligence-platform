@@ -5,19 +5,19 @@ type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'rose' | 'emerald'
 type Size    = 'xs' | 'sm' | 'md' | 'lg'
 
 const variantClass: Record<Variant, string> = {
-  primary:   'bg-accent-blue text-white hover:bg-blue-500 btn-primary-shimmer shadow-sm shadow-accent-blue/20 hover:shadow-accent-blue/30 hover:shadow-md ring-0 hover:ring-2 hover:ring-accent-blue/30 ring-offset-0 ring-offset-surface-base',
-  secondary: 'bg-surface-card text-sentinel-200 border border-surface-border hover:bg-surface-hover hover:text-sentinel-50 hover:border-sentinel-400/40',
-  ghost:     'text-sentinel-300 hover:text-sentinel-100 hover:bg-surface-hover',
-  danger:    'bg-severity-critical/10 text-severity-critical border border-severity-critical/30 hover:bg-severity-critical/20 hover:border-severity-critical/50',
-  rose:      'bg-accent-rose/10 text-accent-rose border border-accent-rose/30 hover:bg-accent-rose/20',
-  emerald:   'bg-accent-emerald/10 text-accent-emerald border border-accent-emerald/30 hover:bg-accent-emerald/20',
+  primary:   'bg-brand-500 text-white hover:bg-brand-600 btn-primary-shimmer shadow-sm shadow-brand-500/20 hover:shadow-brand-500/30 hover:shadow-md ring-0 hover:ring-2 hover:ring-brand-500/30 ring-offset-0 ring-offset-bg-canvas',
+  secondary: 'bg-bg-surface-2 text-text-secondary border border-border-default hover:bg-bg-elevated hover:text-text-primary hover:border-border-strong',
+  ghost:     'text-text-tertiary hover:text-text-primary hover:bg-bg-surface-2',
+  danger:    'bg-severity-tint-critical text-severity-critical border border-severity-critical/30 hover:bg-severity-critical/20 hover:border-severity-critical/50',
+  rose:      'bg-viz-5/10 text-viz-5 border border-viz-5/30 hover:bg-viz-5/20',
+  emerald:   'bg-severity-tint-low text-severity-low border border-severity-low/30 hover:bg-severity-low/20',
 }
 
 const sizeClass: Record<Size, string> = {
-  xs: 'px-2 py-1 text-[10px] gap-1 rounded-md',
-  sm: 'px-3 py-1.5 text-xs gap-1.5 rounded-lg',
-  md: 'px-4 py-2 text-sm gap-2 rounded-lg',
-  lg: 'px-5 py-2.5 text-sm gap-2 rounded-xl',
+  xs: 'h-6 px-2 text-[10px] gap-1 rounded-sm',
+  sm: 'h-8 px-3 text-xs gap-1.5 rounded-md',
+  md: 'h-9 px-4 text-sm gap-2 rounded-md',
+  lg: 'h-11 px-5 text-sm gap-2 rounded-md',
 }
 
 interface ButtonProps {

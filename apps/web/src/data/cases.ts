@@ -86,4 +86,11 @@ export const mockCases: Case[] = [
     personas: [],
     threatVectors: ['GEO-ALPHA-04', 'T1591'],
   },
+  {
+    id: '5', caseId: 'EXTREMELY-LONG-ID-999',
+    title: 'This is an incredibly long case title designed to test the truncation of the flexible 1fr column to ensure it does not break the CSS grid layout',
+    severity: 'critical', category: 'infrastructure_extremely_long_test_category' as any, status: 'escalated',
+    assignee: 'Analyst K. Chen', activeSince: '12:00Z',
+    timeline: [], comms: [], linkedNodes: [], personas: [], threatVectors: []
+  },
 ]

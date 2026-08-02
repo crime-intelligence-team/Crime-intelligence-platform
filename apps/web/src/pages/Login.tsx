@@ -1,45 +1,28 @@
 import { useState, type FormEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Shield, Eye, EyeOff, Lock, User, AlertTriangle, ChevronRight } from 'lucide-react'
+import { useNavigate, Link } from 'react-router-dom'
+import { Shield, Eye, EyeOff, Lock, User, AlertTriangle, ChevronRight, Activity } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 
-// ── Wallpaper grid of faded UI cards ─────────────────────────────────────────
-function WallpaperGrid() {
-  const cards = Array.from({ length: 12 })
+const CLEARANCE_LABELS = ['', 'Basic', 'Restricted', 'Operational', 'Strategic', 'Command']
+
+// Decorative Background Pattern for left panel
+function BackgroundPattern() {
   return (
-    <div className="absolute inset-0 overflow-hidden pointer-events-none select-none">
-      {/* Drifting background cards */}
-      <div
-        className="grid grid-cols-4 gap-3 p-4 opacity-[0.055] scale-110 rotate-[-4deg] origin-center animate-drift"
-        style={{ minHeight: '120%', marginTop: '-10%', animationDuration: '20s' }}
-      >
-        {cards.map((_, i) => (
-          <div key={i} className="bg-surface-card border border-surface-border rounded-xl p-4 space-y-2">
-            <div className="flex items-center gap-2 mb-3">
-              <div className="w-6 h-6 rounded-full bg-surface-hover" />
-              <div className="h-2 bg-surface-hover rounded w-20" />
-              <div className="ml-auto h-2 bg-severity-critical/50 rounded w-12" />
-            </div>
-            {[80, 60, 40, 70, 50].map((w, j) => (
-              <div key={j} className="h-1.5 bg-surface-hover rounded" style={{ width: `${w}%` }} />
-            ))}
-            <div className="mt-3 h-16 bg-surface-hover/50 rounded-lg" />
-            <div className="flex gap-2 mt-2">
-              <div className="h-6 bg-severity-critical/30 rounded w-16" />
-              <div className="h-6 bg-surface-hover rounded w-20" />
-            </div>
-          </div>
-        ))}
-      </div>
-      {/* Ambient glow orbs */}
-      <div className="absolute top-1/3 left-1/4 w-96 h-96 rounded-full opacity-10 animate-pulse" style={{ background: 'radial-gradient(circle, rgba(59,130,246,0.8) 0%, transparent 70%)' }} />
-      <div className="absolute bottom-1/3 right-1/4 w-64 h-64 rounded-full opacity-5" style={{ background: 'radial-gradient(circle, rgba(239,68,68,0.9) 0%, transparent 70%)' }} />
+    <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-[0.03]">
+      <svg className="absolute w-full h-full text-white" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <pattern id="radar" width="120" height="120" patternUnits="userSpaceOnUse">
+            <circle cx="60" cy="60" r="50" fill="none" stroke="currentColor" strokeWidth="1" />
+            <circle cx="60" cy="60" r="25" fill="none" stroke="currentColor" strokeWidth="1" />
+            <line x1="60" y1="0" x2="60" y2="120" stroke="currentColor" strokeWidth="1" />
+            <line x1="0" y1="60" x2="120" y2="60" stroke="currentColor" strokeWidth="1" />
+          </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#radar)" />
+      </svg>
     </div>
   )
 }
-
-// ── Clearance level display ───────────────────────────────────────────────────
-const CLEARANCE_LABELS = ['', 'Basic', 'Restricted', 'Operational', 'Strategic', 'Command']
 
 export default function Login() {
   const navigate = useNavigate()
@@ -67,157 +50,177 @@ export default function Login() {
   }
 
   return (
-    <div className="relative min-h-screen bg-surface-base flex items-center justify-center overflow-hidden">
-      <WallpaperGrid />
-
-      {/* Radial gradient spotlight */}
-      <div className="absolute inset-0 pointer-events-none"
-        style={{ background: 'radial-gradient(ellipse 60% 60% at 50% 50%, rgba(59,130,246,0.06) 0%, transparent 70%)' }} />
-
-      {/* Login card */}
-      <div className="relative z-10 w-full max-w-[400px] mx-4">
-        {/* Logo */}
-        <div className="flex flex-col items-center mb-8">
-          <div className="w-14 h-14 rounded-2xl bg-accent-blue/10 border border-accent-blue/30 flex items-center justify-center mb-4 shadow-lg shadow-accent-blue/10">
-            <Shield className="w-7 h-7 text-accent-blue" />
+    <div className="min-h-screen flex bg-bg-canvas text-text-primary">
+      {/* Left Panel: Brand / Identity (40%) */}
+      <div className="hidden lg:flex w-[40%] relative flex-col justify-between p-12 bg-gradient-to-b from-[#0F1E33] to-bg-canvas border-r border-border-default overflow-hidden">
+        <BackgroundPattern />
+        
+        {/* Top Logo */}
+        <div className="relative z-10 flex items-center gap-3">
+          <div className="w-12 h-12 rounded-xl bg-brand-500/10 border border-brand-500/30 flex items-center justify-center shadow-lg shadow-brand-500/10">
+            <Shield className="w-6 h-6 text-brand-500" />
           </div>
-          <h1 className="text-2xl font-bold tracking-[0.15em] text-sentinel-50 uppercase">Sentinel</h1>
-          <p className="text-[10px] tracking-[0.3em] text-sentinel-400 uppercase mt-1">Intelligence System</p>
+          <span className="text-xl font-bold tracking-[0.15em] text-text-primary uppercase">Sentinel</span>
         </div>
 
-        {/* Card */}
-        <div className="bg-surface-raised/80 backdrop-blur-xl border border-surface-border rounded-2xl p-8 shadow-2xl shadow-black/40">
-          <div className="mb-6">
-            <h2 className="text-base font-semibold text-sentinel-50">Secure Access</h2>
-            <p className="text-xs text-sentinel-400 mt-1">Enter your operator credentials to authenticate</p>
+        {/* Middle Headline */}
+        <div className="relative z-10">
+          <h1 className="text-[40px] font-bold text-text-primary leading-tight mb-4 tracking-tight">
+            Command Center Access
+          </h1>
+          <p className="text-base text-text-secondary leading-relaxed max-w-sm">
+            Secure authentication portal for the Sentinel Crime Intelligence Platform. Authorized personnel only.
+          </p>
+        </div>
+
+        {/* Bottom Footer */}
+        <div className="relative z-10 flex items-center gap-3">
+          <span className="w-1.5 h-1.5 rounded-full bg-severity-low animate-pulse" />
+          <p className="text-xs tracking-widest text-text-tertiary uppercase">
+            End-to-End Encrypted Session
+          </p>
+        </div>
+      </div>
+
+      {/* Right Panel: Auth Form (60%) */}
+      <div className="flex-1 flex items-center justify-center p-8 relative">
+        <div className="w-full max-w-[420px] bg-bg-elevated border border-border-default rounded-xl p-8 shadow-2xl">
+          {/* Mobile Logo & Header */}
+          <div className="mb-8">
+            <div className="w-10 h-10 rounded-lg bg-brand-500/10 border border-brand-500/30 flex items-center justify-center mb-5 lg:hidden">
+              <Shield className="w-5 h-5 text-brand-500" />
+            </div>
+            <h2 className="text-2xl font-bold text-text-primary mb-1">Sign in</h2>
+            <p className="text-sm text-text-secondary">
+              Don't have an account? <Link to="/register" className="text-brand-500 hover:text-brand-400 font-medium transition-colors">Register here</Link>
+            </p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-5">
             {/* Operator ID */}
             <div>
-              <label className="block text-[10px] font-semibold tracking-widest text-sentinel-400 uppercase mb-1.5">
+              <label className="block text-[11px] font-semibold text-text-secondary uppercase tracking-wider mb-1.5">
                 Operator ID
               </label>
               <div className="relative">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-sentinel-500" />
+                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-tertiary" />
                 <input
                   type="text"
                   value={username}
                   onChange={e => setUsername(e.target.value)}
                   placeholder="op.chen"
                   autoComplete="username"
-                  className="w-full pl-9 pr-4 py-2.5 bg-surface-card border border-surface-border rounded-lg text-sm text-sentinel-100 placeholder-sentinel-600 focus:outline-none focus:border-accent-blue/60 focus:ring-1 focus:ring-accent-blue/20 transition-colors"
+                  className="w-full h-9 pl-9 pr-4 bg-bg-surface-2 border border-border-default rounded-md text-sm text-text-primary placeholder-text-disabled focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500/40 transition-colors"
                 />
               </div>
             </div>
 
             {/* Passphrase */}
             <div>
-              <label className="block text-[10px] font-semibold tracking-widest text-sentinel-400 uppercase mb-1.5">
-                Passphrase
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-[11px] font-semibold text-text-secondary uppercase tracking-wider">
+                  Passphrase
+                </label>
+                <Link to="#" className="text-xs text-brand-500 hover:text-brand-400 font-medium transition-colors">
+                  Forgot password?
+                </Link>
+              </div>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-sentinel-500" />
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-tertiary" />
                 <input
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={e => setPassword(e.target.value)}
                   placeholder="••••••••••"
                   autoComplete="current-password"
-                  className="w-full pl-9 pr-10 py-2.5 bg-surface-card border border-surface-border rounded-lg text-sm text-sentinel-100 placeholder-sentinel-600 focus:outline-none focus:border-accent-blue/60 focus:ring-1 focus:ring-accent-blue/20 transition-colors"
+                  className="w-full h-9 pl-9 pr-10 bg-bg-surface-2 border border-border-default rounded-md text-sm text-text-primary placeholder-text-disabled focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500/40 transition-colors"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(v => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-sentinel-500 hover:text-sentinel-300 transition-colors"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-text-primary transition-colors"
                 >
-                  {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
             </div>
 
-            {/* Clearance level selector */}
+            {/* Clearance Level */}
             <div>
-              <label className="block text-[10px] font-semibold tracking-widest text-sentinel-400 uppercase mb-1.5">
+              <label className="block text-[11px] font-semibold text-text-secondary uppercase tracking-wider mb-1.5">
                 Clearance Level
               </label>
-              <div className="flex gap-1.5">
+              <div className="flex gap-2">
                 {[3, 4, 5].map(lvl => (
                   <button
                     key={lvl}
                     type="button"
                     onClick={() => setClearance(lvl)}
-                    className={`flex-1 py-2 rounded-lg text-xs font-semibold border transition-colors ${
+                    className={`flex-1 h-9 rounded-md text-xs font-medium border transition-colors ${
                       clearanceLevel === lvl
-                        ? 'bg-accent-blue/15 border-accent-blue/50 text-accent-blue'
-                        : 'bg-surface-card border-surface-border text-sentinel-400 hover:border-surface-hover'
+                        ? 'bg-brand-500/10 border-brand-500/40 text-brand-500'
+                        : 'bg-bg-surface-2 border-border-default text-text-secondary hover:border-border-strong hover:text-text-primary'
                     }`}
                   >
                     CL-{lvl}
-                    <span className="block text-[9px] font-normal mt-0.5 text-current opacity-70">
-                      {CLEARANCE_LABELS[lvl]}
-                    </span>
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* Error */}
+            {/* Error Message */}
             {error && (
-              <div className="flex items-start gap-2 p-3 bg-severity-critical/10 border border-severity-critical/30 rounded-lg animate-fade-in">
-                <AlertTriangle className="w-3.5 h-3.5 text-severity-critical shrink-0 mt-0.5" />
+              <div className="flex items-start gap-2 p-3 bg-severity-tint-critical border border-severity-critical/30 rounded-md">
+                <AlertTriangle className="w-4 h-4 text-severity-critical shrink-0 mt-0.5" />
                 <p className="text-xs text-severity-critical leading-relaxed">{error}</p>
               </div>
             )}
 
-            {/* Submit */}
+            {/* Submit Button */}
             <button
               type="submit"
               disabled={loading}
-              className="w-full flex items-center justify-center gap-2 py-3 mt-2 bg-sentinel-50 text-surface-base rounded-lg text-sm font-semibold tracking-wider uppercase hover:bg-white transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              className="w-full h-11 flex items-center justify-center gap-2 bg-brand-500 text-white hover:bg-brand-600 btn-primary-shimmer shadow-sm shadow-brand-500/20 hover:shadow-brand-500/30 hover:shadow-md ring-0 hover:ring-2 hover:ring-brand-500/30 ring-offset-0 ring-offset-bg-canvas rounded-md text-sm font-semibold transition-all disabled:opacity-60 disabled:cursor-not-allowed mt-2"
             >
               {loading ? (
                 <span className="flex items-center gap-2">
-                  <span className="w-4 h-4 border-2 border-surface-base/30 border-t-surface-base rounded-full animate-spin" />
+                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                   Authenticating...
                 </span>
               ) : (
                 <>
-                  <Lock className="w-4 h-4" />
                   Verify Identity
-                  <ChevronRight className="w-4 h-4 ml-auto" />
+                  <ChevronRight className="w-4 h-4" />
                 </>
               )}
             </button>
           </form>
 
-          {/* Demo credentials hint */}
-          <div className="mt-5 pt-4 border-t border-surface-border">
-            <p className="text-[10px] text-sentinel-600 text-center mb-2 uppercase tracking-wider">Demo Credentials</p>
-            <div className="grid grid-cols-3 gap-1.5">
-              {[
-                { u: 'demo', p: 'demo', cl: 'CL-3' },
-                { u: 'op.chen', p: 'sentinel', cl: 'CL-4' },
-                { u: 'admin', p: 'admin', cl: 'CL-5' },
-              ].map(c => (
-                <button
-                  key={c.u}
-                  type="button"
-                  onClick={() => { setUsername(c.u); setPassword(c.p) }}
-                  className="py-1.5 px-2 rounded-lg bg-surface-card border border-surface-border text-[10px] text-sentinel-400 hover:text-sentinel-200 hover:border-surface-hover transition-colors text-center"
-                >
-                  <span className="block font-mono">{c.u}</span>
-                  <span className="text-sentinel-600">{c.cl}</span>
-                </button>
-              ))}
+          {/* Demo Credentials Sub-panel */}
+          <div className="mt-8 pt-6 border-t border-border-default">
+            <div className="bg-severity-tint-info border border-severity-info/20 rounded-md p-4">
+              <p className="text-xs font-semibold text-severity-info mb-3 flex items-center gap-1.5 uppercase tracking-wider">
+                <Activity className="w-3.5 h-3.5" /> Demo Access
+              </p>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { u: 'demo', p: 'demo', cl: 'CL-3' },
+                  { u: 'op.chen', p: 'sentinel', cl: 'CL-4' },
+                  { u: 'admin', p: 'admin', cl: 'CL-5' },
+                ].map(c => (
+                  <button
+                    key={c.u}
+                    type="button"
+                    onClick={() => { setUsername(c.u); setPassword(c.p) }}
+                    className="py-2 px-2 rounded bg-bg-surface border border-border-default hover:border-border-strong text-text-secondary hover:text-text-primary transition-colors text-center flex flex-col items-center gap-0.5"
+                  >
+                    <span className="block font-mono text-xs">{c.u}</span>
+                    <span className="text-[10px] text-text-tertiary">{c.cl}</span>
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
-        </div>
-
-        {/* Bottom badge */}
-        <div className="flex items-center justify-center gap-2 mt-6">
-          <span className="w-1.5 h-1.5 rounded-full bg-accent-emerald animate-pulse" />
-          <span className="text-[10px] tracking-widest text-sentinel-600 uppercase">End-to-End Encrypted Session</span>
         </div>
       </div>
     </div>

@@ -1,7 +1,26 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Shield, Lock, Clock, ArrowLeft, AlertTriangle, CheckCircle } from 'lucide-react'
+import { Shield, Lock, Clock, ArrowLeft, AlertTriangle, CheckCircle, Info } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+
+// Decorative Background Pattern for MFA (matches Login)
+function BackgroundPattern() {
+  return (
+    <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-[0.03]">
+      <svg className="absolute w-full h-full text-white" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <pattern id="radar" width="120" height="120" patternUnits="userSpaceOnUse">
+            <circle cx="60" cy="60" r="50" fill="none" stroke="currentColor" strokeWidth="1" />
+            <circle cx="60" cy="60" r="25" fill="none" stroke="currentColor" strokeWidth="1" />
+            <line x1="60" y1="0" x2="60" y2="120" stroke="currentColor" strokeWidth="1" />
+            <line x1="0" y1="60" x2="120" y2="60" stroke="currentColor" strokeWidth="1" />
+          </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#radar)" />
+      </svg>
+    </div>
+  )
+}
 
 export default function MFALogin() {
   const navigate = useNavigate()
@@ -65,54 +84,50 @@ export default function MFALogin() {
   }, [otp])
 
   const otpInputClass = (filled: boolean) =>
-    `w-12 h-14 rounded-lg bg-surface-raised border text-center text-lg font-mono font-medium text-sentinel-50 focus:outline-none transition-colors ${
-      success ? 'border-accent-emerald bg-accent-emerald/10 text-accent-emerald'
-      : filled ? 'border-sentinel-300' : 'border-surface-border focus:border-sentinel-200 focus:bg-surface-overlay'
+    `w-12 h-14 rounded-md bg-bg-elevated border text-center text-xl font-mono font-bold focus:outline-none transition-all ${
+      success ? 'border-severity-low bg-severity-low/10 text-severity-low'
+      : filled ? 'border-border-strong text-text-primary' 
+      : 'border-border-default text-text-primary focus:border-brand-500 focus:shadow-[0_0_0_3px_rgba(59,130,246,0.25)]'
     }`
 
   return (
-    <div className="min-h-screen bg-surface-base flex flex-col items-center justify-center relative overflow-hidden">
-      {/* Background glow */}
-      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-        <div className="w-[600px] h-[600px] rounded-full bg-accent-blue/5 blur-3xl" />
-      </div>
-      {/* Subtle grid wallpaper */}
-      <div className="absolute inset-0 opacity-[0.04] pointer-events-none select-none"
-        style={{ backgroundImage: 'linear-gradient(#1e293b 1px, transparent 1px), linear-gradient(90deg, #1e293b 1px, transparent 1px)', backgroundSize: '32px 32px' }} />
+    <div className="min-h-screen bg-gradient-to-b from-[#0F1E33] to-bg-canvas flex flex-col items-center justify-center relative overflow-hidden">
+      <BackgroundPattern />
 
       {/* Logo */}
-      <div className="relative z-10 flex flex-col items-center mb-6">
+      <div className="relative z-10 flex flex-col items-center mb-8">
         <div className={`w-12 h-12 rounded-xl border flex items-center justify-center mb-4 shadow-lg transition-colors duration-500 ${
-          success ? 'bg-accent-emerald/20 border-accent-emerald/50' : 'bg-surface-card border-surface-border'
+          success ? 'bg-severity-low/20 border-severity-low/50' : 'bg-brand-500/10 border-brand-500/30'
         }`}>
           {success
-            ? <CheckCircle className="w-6 h-6 text-accent-emerald" />
-            : <Shield className="w-6 h-6 text-sentinel-200" />
+            ? <CheckCircle className="w-6 h-6 text-severity-low" />
+            : <Shield className="w-6 h-6 text-brand-500" />
           }
         </div>
-        <h1 className="text-xl font-bold tracking-[0.3em] text-sentinel-50">SENTINEL</h1>
-        <p className="text-[10px] tracking-[0.2em] text-sentinel-400 mt-0.5">INTELLIGENCE SYSTEM</p>
+        <h1 className="text-xl font-bold tracking-[0.15em] text-text-primary uppercase">Sentinel</h1>
       </div>
 
       {/* Card */}
-      <div className="relative z-10 w-full max-w-[420px] mx-4 bg-surface-card border border-surface-border rounded-2xl p-8 shadow-2xl">
+      <div className="relative z-10 w-full max-w-[420px] mx-4 bg-bg-elevated border border-border-default rounded-xl p-8 shadow-2xl">
         {/* Step indicator */}
-        <div className="flex items-center gap-2 justify-center mb-5">
-          <div className="flex items-center gap-1.5 text-[10px] text-sentinel-500">
-            <span className="w-5 h-5 rounded-full bg-accent-emerald/20 border border-accent-emerald/50 text-accent-emerald flex items-center justify-center text-[9px] font-bold">✓</span>
+        <div className="flex items-center gap-3 justify-center mb-6">
+          <div className="flex items-center gap-2 text-xs text-text-primary font-medium">
+            <span className="w-5 h-5 rounded-full bg-severity-low text-white flex items-center justify-center">
+              <CheckCircle className="w-3.5 h-3.5" />
+            </span>
             Credentials
           </div>
-          <div className="w-6 h-px bg-surface-border" />
-          <div className="flex items-center gap-1.5 text-[10px] text-sentinel-200 font-medium">
-            <span className="w-5 h-5 rounded-full bg-accent-blue/20 border border-accent-blue/50 text-accent-blue flex items-center justify-center text-[9px] font-bold">2</span>
+          <div className="w-8 h-px bg-border-default" />
+          <div className="flex items-center gap-2 text-xs text-text-primary font-medium">
+            <span className="w-5 h-5 rounded-full bg-brand-500 text-white flex items-center justify-center text-[10px] font-bold">2</span>
             Verification
           </div>
         </div>
 
-        <h2 className="text-lg font-semibold text-sentinel-50 text-center mb-1.5">Two-Factor Authentication</h2>
-        <p className="text-xs text-sentinel-400 text-center mb-7 leading-relaxed">
+        <h2 className="text-2xl font-bold text-text-primary text-center mb-2">Two-Factor Authentication</h2>
+        <p className="text-sm text-text-secondary text-center mb-8 leading-relaxed">
           {state.user
-            ? <>Welcome back, <span className="text-sentinel-200 font-medium">{state.user.name}</span>.<br />Enter the 6-digit code from your secure device ending in <span className="text-sentinel-200 font-medium">**84</span>.</>
+            ? <>Welcome back, <span className="text-text-primary font-medium">{state.user.name}</span>.<br />Enter the 6-digit code from your secure device ending in <span className="text-text-primary font-medium">**84</span>.</>
             : 'Enter the 6-digit verification code sent to your registered secure device.'
           }
         </p>
@@ -133,7 +148,7 @@ export default function MFALogin() {
               className={otpInputClass(!!otp[i])}
             />
           ))}
-          <span className="text-sentinel-400 font-medium text-lg mx-1">—</span>
+          <span className="text-text-tertiary font-medium text-lg mx-1">—</span>
           {[3, 4, 5].map(i => (
             <input
               key={i}
@@ -151,38 +166,43 @@ export default function MFALogin() {
         </div>
 
         {/* Timer + Resend */}
-        <div className="flex items-center justify-between mb-5">
-          <span className={`flex items-center gap-1.5 text-sm font-mono font-medium ${seconds > 0 ? 'text-accent-amber' : 'text-severity-critical'}`}>
-            <Clock className="w-3.5 h-3.5" />
+        <div className="flex items-center justify-between mb-8">
+          <span className={`flex items-center gap-1.5 text-sm font-mono font-medium ${seconds > 0 ? 'text-text-primary' : 'text-severity-critical'}`}>
+            <Clock className="w-4 h-4 text-text-tertiary" />
             {mm}:{ss}
           </span>
           <button
             onClick={() => setSeconds(120)}
             disabled={seconds > 0}
-            className="text-[11px] tracking-wider text-sentinel-400 hover:text-sentinel-200 uppercase transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className={`text-xs uppercase tracking-wider font-medium transition-colors ${
+              seconds > 0 
+                ? 'text-text-tertiary cursor-not-allowed' 
+                : 'text-brand-400 hover:text-brand-300'
+            }`}
           >
             Resend Code
           </button>
         </div>
 
         {/* Hint + Quick fill */}
-        <div className="text-center mb-4 space-y-1.5">
-          <p className="text-[10px] text-sentinel-500">
-            Demo: Enter any 6-digit code (e.g. <span className="font-mono text-sentinel-300 font-semibold">473829</span> or <span className="font-mono text-sentinel-300 font-semibold">123456</span>)
+        <div className="bg-severity-tint-info rounded-md p-4 mb-6">
+          <p className="text-xs text-severity-info flex items-center gap-1.5 mb-2 font-medium">
+            <Info className="w-3.5 h-3.5" />
+            Demo: Enter any 6-digit code
           </p>
           <button
             type="button"
             onClick={() => setOtp(['4', '7', '3', '8', '2', '9'])}
-            className="px-2.5 py-1 rounded bg-surface-raised border border-surface-border text-[10px] text-accent-blue font-mono hover:bg-surface-hover hover:border-accent-blue/40 transition-colors"
+            className="w-full py-1.5 rounded-sm bg-transparent border border-border-default hover:border-border-strong text-xs text-text-secondary hover:text-text-primary font-mono transition-colors"
           >
-            ⚡ Auto-Fill Code: 473829
+            Auto-Fill Code: 473829
           </button>
         </div>
 
         {/* Error */}
         {error && (
-          <div className="flex items-start gap-2 p-3 mb-4 bg-severity-critical/10 border border-severity-critical/30 rounded-lg animate-fade-in">
-            <AlertTriangle className="w-3.5 h-3.5 text-severity-critical shrink-0 mt-0.5" />
+          <div className="flex items-start gap-2 p-3 mb-6 bg-severity-tint-critical border border-severity-critical/30 rounded-md animate-fade-in">
+            <AlertTriangle className="w-4 h-4 text-severity-critical shrink-0 mt-0.5" />
             <p className="text-xs text-severity-critical leading-relaxed">{error}</p>
           </div>
         )}
@@ -191,33 +211,35 @@ export default function MFALogin() {
         <button
           onClick={handleVerify}
           disabled={loading || success}
-          className={`w-full flex items-center justify-center gap-2 py-3 rounded-lg text-sm font-semibold tracking-[0.15em] transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${
-            success ? 'bg-accent-emerald text-white' : 'bg-sentinel-50 text-surface-base hover:bg-white'
+          className={`w-full h-11 flex items-center justify-center gap-2 rounded-md text-sm font-semibold transition-all disabled:opacity-60 disabled:cursor-not-allowed ${
+            success 
+              ? 'bg-severity-low text-white' 
+              : 'bg-brand-500 hover:bg-brand-600 text-white shadow-sm shadow-brand-500/20 hover:shadow-md'
           }`}
         >
           {loading ? (
-            <><span className="w-4 h-4 border-2 border-surface-base/30 border-t-surface-base rounded-full animate-spin" /> Verifying...</>
+            <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Verifying...</>
           ) : success ? (
             <><CheckCircle className="w-4 h-4" /> Authenticated — Redirecting...</>
           ) : (
-            <><Lock className="w-4 h-4" /> VERIFY IDENTITY</>
+            <>Verify Identity</>
           )}
         </button>
 
         {/* Back to login */}
         <button
           onClick={() => navigate('/login')}
-          className="flex items-center justify-center gap-1.5 w-full mt-4 text-xs text-sentinel-400 hover:text-sentinel-200 transition-colors"
+          className="flex items-center justify-center gap-1.5 w-full mt-4 text-xs text-text-tertiary hover:text-text-primary transition-colors"
         >
-          <ArrowLeft className="w-3 h-3" />
+          <ArrowLeft className="w-3.5 h-3.5" />
           Return to Login
         </button>
       </div>
 
       {/* Footer badge */}
-      <div className="relative z-10 mt-6 flex items-center gap-2 px-4 py-2 bg-surface-card/60 border border-surface-border rounded-full">
-        <span className="w-2 h-2 rounded-full bg-accent-emerald animate-pulse" />
-        <span className="text-[10px] tracking-[0.15em] text-sentinel-400 uppercase">End-to-End Encrypted Session</span>
+      <div className="relative z-10 mt-6 flex items-center justify-center gap-2 px-3 py-1.5 bg-bg-surface border border-border-subtle rounded-full shadow-sm">
+        <Lock className="w-3.5 h-3.5 text-severity-low" />
+        <span className="text-[10px] text-text-secondary">End-to-End Encrypted Session</span>
       </div>
     </div>
   )
