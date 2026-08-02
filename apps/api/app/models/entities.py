@@ -36,6 +36,8 @@ class Officer(Base, TimestampMixin):
     unit = Column(String, nullable=True)
     home_district_id = Column(UUID(as_uuid=True), ForeignKey("districts.id"), nullable=True)
     mfa_enabled = Column(Integer, default=1)  # 1/0 instead of bool for simple SQLite/PG parity
+    totp_secret = Column(String, nullable=True)  # base32 RFC 4648, set at enrollment (TOTP component)
+    totp_enrolled_at = Column(DateTime(timezone=True), nullable=True)
     is_active = Column(Integer, default=1)
     last_login_at = Column(DateTime(timezone=True), nullable=True)
 

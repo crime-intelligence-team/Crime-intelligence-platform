@@ -23,6 +23,10 @@ class MfaVerifyResponse(BaseModel):
     token_type: str = "bearer"
 
 
+class MfaStatusResponse(BaseModel):
+    mfa_required: bool
+
+
 class StepUpRequest(BaseModel):
     """Fresh re-authentication for sensitive actions (brief 7.1, 7.11):
     the password is re-verified against the session officer's hash;
@@ -52,3 +56,27 @@ class CurrentUserResponse(BaseModel):
     role: str
     permissions: list[str]
     jurisdiction_scope: list[str]  # district ids/codes this user can act within
+
+
+class MfaEnrollRequest(BaseModel):
+    """Start TOTP enrollment: re-authenticates with the password, then the
+    returned secret + otpauth_url are shown ONCE (the frontend renders the
+    QR from the URL). Enrollment completes only at confirm."""
+
+    password: str
+
+
+class MfaEnrollResponse(BaseModel):
+    totp_secret: str
+    otpauth_url: str
+
+
+class MfaConfirmRequest(BaseModel):
+    otp_code: str
+
+
+class MfaDisableRequest(BaseModel):
+    """Disable requires the step-up assertion (X-Step-Up-Token) AND the
+    password again — disabling the second factor must itself be proven."""
+
+    password: str
