@@ -20,6 +20,7 @@ from app.models.entities import (
 from app.schemas.common import ClassificationLevel, Confidence, ConfidenceBand, RedactedField
 from app.schemas.network import EntityDetail, EntitySummary, RelationshipOut
 from app.services.district_service import get_accessible_district_ids
+from app.services.redaction_service import apply_entity_redactions
 
 
 class GraphUnavailableError(Exception):
@@ -119,6 +120,7 @@ def get_entity(
     db: Session,
     entity_id: UUID,
     officer: Officer,
+    ip_address: str | None = None,
 ) -> EntityDetail | None:
     """Single-record fetch across the entity tables in a fixed order
     (Person -> Organization -> Vehicle -> Device -> Address), first match
@@ -129,7 +131,13 @@ def get_entity(
     officer's tier never matches this query, so it surfaces as 404 at the
     router — existence is not leaked by a 403. Address rows are additionally
     jurisdiction-scoped via get_accessible_district_ids, so an
-    out-of-jurisdiction address is likewise absent -> 404."""
+    out-of-jurisdiction address is likewise absent -> 404.
+
+    Field-level redaction (entity redaction component, Phase 7 follow-up):
+    every matched detail passes through apply_entity_redactions before being
+    returned — active policy rules mask whole field values per the
+    vocabulary. With no rules the pass is a no-op and the output is
+    byte-identical to pre-component behavior."""
     visible_tiers = classification_filter(officer.role)
     accessible = get_accessible_district_ids(officer)
     # is_protected_subject is gated at a fixed PROTECTED tier: below it the
@@ -139,6 +147,11 @@ def get_entity(
         CLASSIFICATION_RANK[ROLE_MAX_CLASSIFICATION[officer.role]]
         >= CLASSIFICATION_RANK[ModelClassificationLevel.PROTECTED]
     )
+
+    def _apply(detail: EntityDetail) -> EntityDetail:
+        return apply_entity_redactions(
+            db=db, officer=officer, detail=detail, ip_address=ip_address
+        )
 
     person = db.execute(
         select(Person).where(
@@ -159,7 +172,7 @@ def get_entity(
             if can_see_protected_flag
             else RedactedField(redacted=True, reason="no_access")
         )
-        return EntityDetail(
+        return _apply(EntityDetail(
             id=str(person.id),
             type="person",
             label=person.full_name,
@@ -167,7 +180,7 @@ def get_entity(
             aliases=aliases,
             date_of_birth=str(person.date_of_birth) if person.date_of_birth else None,
             is_protected_subject=protected_subject,
-        )
+        ))
 
     organization = db.execute(
         select(Organization).where(
@@ -176,14 +189,14 @@ def get_entity(
         )
     ).scalar_one_or_none()
     if organization is not None:
-        return EntityDetail(
+        return _apply(EntityDetail(
             id=str(organization.id),
             type="organization",
             label=organization.name,
             classification=ClassificationLevel(organization.classification.value),
             name=organization.name,
             org_type=organization.org_type,
-        )
+        ))
 
     vehicle = db.execute(
         select(Vehicle).where(
@@ -192,7 +205,7 @@ def get_entity(
         )
     ).scalar_one_or_none()
     if vehicle is not None:
-        return EntityDetail(
+        return _apply(EntityDetail(
             id=str(vehicle.id),
             type="vehicle",
             label=vehicle.registration_number,
@@ -201,7 +214,7 @@ def get_entity(
             make=vehicle.make,
             model=vehicle.model,
             color=vehicle.color,
-        )
+        ))
 
     device = db.execute(
         select(Device).where(
@@ -210,7 +223,7 @@ def get_entity(
         )
     ).scalar_one_or_none()
     if device is not None:
-        return EntityDetail(
+        return _apply(EntityDetail(
             id=str(device.id),
             type="device",
             label=device.phone_number,
@@ -218,7 +231,7 @@ def get_entity(
             phone_number=device.phone_number,
             imei=device.imei,
             device_type=device.device_type,
-        )
+        ))
 
     address_stmt = select(Address).where(
         Address.id == entity_id,
@@ -228,14 +241,14 @@ def get_entity(
         address_stmt = address_stmt.where(Address.district_id.in_(accessible))
     address = db.execute(address_stmt).scalar_one_or_none()
     if address is not None:
-        return EntityDetail(
+        return _apply(EntityDetail(
             id=str(address.id),
             type="address",
             label=address.raw_text,
             classification=ClassificationLevel(address.classification.value),
             raw_text=address.raw_text,
             district_id=str(address.district_id) if address.district_id else None,
-        )
+        ))
 
     return None
 

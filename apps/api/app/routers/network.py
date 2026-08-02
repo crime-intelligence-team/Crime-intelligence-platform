@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -44,6 +44,7 @@ def search_entities(
 @router.get("/entities/{entity_id}", response_model=EntityDetail)
 def get_entity(
     entity_id: str,
+    request: Request,
     officer: Officer = Depends(get_current_officer),
     _pm: Officer = Depends(require_permissions("entity:read")),
     db: Session = Depends(get_db),
@@ -60,7 +61,12 @@ def get_entity(
                 }
             },
         )
-    result = network_service.get_entity(db=db, entity_id=entity_uuid, officer=officer)
+    result = network_service.get_entity(
+        db=db,
+        entity_id=entity_uuid,
+        officer=officer,
+        ip_address=request.client.host if request.client else None,
+    )
     if result is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

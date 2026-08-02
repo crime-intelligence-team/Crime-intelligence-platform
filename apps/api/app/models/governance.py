@@ -42,8 +42,22 @@ class RedactionPolicyDecision(Base, TimestampMixin):
 
     __tablename__ = "redaction_policy_decisions"
 
-    REDACTION_ENTITY_TYPES = ("note", "case")
-    REDACTION_FIELDS = frozenset({"note.body", "case.summary"})
+    REDACTION_ENTITY_TYPES = (
+        "note", "case", "entity",
+        "person", "organization", "vehicle", "device", "address",
+    )
+    REDACTION_FIELDS = frozenset(
+        {
+            "note.body", "case.summary",
+            "entity.label",
+            "person.aliases", "person.date_of_birth",
+            "organization.org_type",
+            "vehicle.registration_number", "vehicle.make", "vehicle.model",
+            "vehicle.color",
+            "device.phone_number", "device.imei", "device.device_type",
+            "address.raw_text",
+        }
+    )
     VALID_DECISIONS = ("redact",)
 
     id = uuid_pk_column()

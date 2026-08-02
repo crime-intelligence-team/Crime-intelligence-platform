@@ -34,6 +34,7 @@ from app.models.base import CLASSIFICATION_RANK
 from app.models.entities import Officer
 from app.models.governance import AuditLogEntry, RedactionPolicyDecision
 from app.schemas.cases import ExportResponse, RedactionPolicyCreate
+from app.schemas.network import EntityDetail
 from app.schemas.common import RedactedField
 
 
@@ -52,10 +53,12 @@ def _write_audit_log(
     resource_type: str | None,
     resource_id: str | None,
     detail: str | None,
+    ip_address: str | None = None,
 ) -> None:
     """Same AuditLogEntry shape case_service/auth_service use. Redaction
-    events are their own audited entries (policy CRUD + export_redaction),
-    additive to the existing export audit — no frozen code is touched."""
+    events are their own audited entries (policy CRUD + export_redaction +
+    entity_redaction), additive to the existing export audit — no frozen
+    code is touched."""
     db.add(
         AuditLogEntry(
             actor_id=actor_id,
@@ -63,6 +66,7 @@ def _write_audit_log(
             resource_type=resource_type,
             resource_id=resource_id,
             detail=detail,
+            ip_address=ip_address,
         )
     )
 
@@ -236,6 +240,84 @@ def apply_redactions(
                 "ip_address": ip_address,
             }
         ),
+    )
+    db.commit()
+    return updated
+
+
+ENTITY_DETAIL_FIELDS = (
+    "label", "aliases", "date_of_birth", "org_type", "registration_number",
+    "make", "model", "color", "phone_number", "imei", "device_type",
+    "raw_text",
+)
+
+
+def apply_entity_redactions(
+    db: Session,
+    officer: Officer,
+    detail: EntityDetail,
+    ip_address: str | None,
+) -> EntityDetail:
+    """Field-level redaction for the entity detail read path (Phase 7
+    follow-up component 2; same engine as export redaction — decision 008).
+
+    Active policy rules fire when the detail's classification is at/above
+    the rule minimum (the `_matches` semantics export uses). `label` is a
+    shared field (rules use entity_type="entity"); every other field is
+    scoped to the detail's own type (person/organization/vehicle/device/
+    address). Masking is whole-field: the value is REPLACED by a
+    RedactedField(reason="policy"); already-redacted and absent fields are
+    never touched. Unredactable fields (id/type/classification/district_id/
+    is_protected_subject) are not in the vocabulary and can never match.
+
+    Returns the detail unchanged when nothing fires — the no-rules path is
+    byte-identical to pre-component output. Writes ONE entity_redaction
+    audit entry per detail that masked content (only-success auditing)."""
+    policies = list(
+        db.execute(
+            select(RedactionPolicyDecision).where(
+                RedactionPolicyDecision.active.is_(True)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not policies:
+        return detail
+
+    masked: dict[str, object] = {}
+    fired: list[str] = []
+    for field in ENTITY_DETAIL_FIELDS:
+        value = getattr(detail, field, None)
+        if value is None or isinstance(value, RedactedField):
+            continue
+        entity_type = "entity" if field == "label" else str(detail.type)
+        policy_ids = [
+            str(p.id)
+            for p in policies
+            if p.entity_type == entity_type
+            and p.field == field
+            and _matches(p, detail.classification)
+        ]
+        if policy_ids:
+            fired.extend(policy_ids)
+            masked[field] = RedactedField(redacted=True, reason="policy")
+
+    if not masked:
+        return detail
+
+    updated = detail.model_copy(update=masked)
+    _write_audit_log(
+        db=db,
+        actor_id=officer.id,
+        action="entity_redaction",
+        resource_type="entity",
+        resource_id=detail.id,
+        detail=(
+            "Masked fields: " + ", ".join(sorted(masked))
+            + "; policy ids: " + ", ".join(sorted(set(fired)))
+        ),
+        ip_address=ip_address,
     )
     db.commit()
     return updated
