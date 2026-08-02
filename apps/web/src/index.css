@@ -12,6 +12,35 @@
     min-height: 100vh;
   }
 
+  /* 
+   * Unified Input Contrast Rules 
+   * Ensures high-contrast typed text across all inputs automatically.
+   */
+  input[type="text"],
+  input[type="search"],
+  input[type="email"],
+  input[type="password"],
+  textarea {
+    color: theme('colors.text.primary') !important;
+  }
+  input[type="text"]::placeholder,
+  input[type="search"]::placeholder,
+  input[type="email"]::placeholder,
+  input[type="password"]::placeholder,
+  textarea::placeholder {
+    color: theme('colors.text.tertiary') !important;
+  }
+
+  /* Override for any light-background inputs to use dark text */
+  input.bg-white, input.bg-gray-50, input.bg-slate-50,
+  textarea.bg-white, textarea.bg-gray-50, textarea.bg-slate-50 {
+    color: theme('colors.bg.canvas') !important;
+  }
+  input.bg-white::placeholder, input.bg-gray-50::placeholder, input.bg-slate-50::placeholder,
+  textarea.bg-white::placeholder, textarea.bg-gray-50::placeholder, textarea.bg-slate-50::placeholder {
+    color: theme('colors.text.secondary') !important;
+  }
+
   ::selection {
     @apply bg-brand-500/20 text-text-primary;
   }

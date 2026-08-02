@@ -60,7 +60,7 @@ export default function TopBar() {
         <input
           type="text"
           placeholder={placeholder}
-          className="w-full pl-9 pr-4 py-1.5 bg-surface-card border border-surface-border rounded-lg text-xs text-sentinel-100 placeholder-sentinel-500 focus:outline-none focus:border-accent-blue/50 focus:ring-1 focus:ring-accent-blue/20 transition-colors"
+          className="w-full pl-9 pr-4 py-1.5 bg-surface-card border border-surface-border rounded-lg text-xs focus:outline-none focus:border-accent-blue/50 focus:ring-1 focus:ring-accent-blue/20 transition-colors"
         />
       </div>
 
