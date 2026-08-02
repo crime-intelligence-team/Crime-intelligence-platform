@@ -172,4 +172,5 @@ def _row_to_output(zone: Zone, row: ZoneRiskScore) -> ZoneRiskOut:
         recommended_interpretation=row.recommended_interpretation,
         analyst_review_status=row.analyst_review_status,
         classification=ClassificationLevel(zone.classification.value),
+        score_id=str(row.id),
     )

@@ -42,3 +42,4 @@ class ZoneRiskOut(BaseModel):
     recommended_interpretation: str  # low | elevated | priority_watch — never "verdict"
     analyst_review_status: str | None = None
     classification: ClassificationLevel
+    score_id: str | None = None  # ZoneRiskScore PK — confidence-review target_id for zone_score

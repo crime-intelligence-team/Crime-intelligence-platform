@@ -1,104 +1,152 @@
 import {
-  createContext, useContext, useReducer, useCallback, type ReactNode,
+  createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode,
 } from 'react'
 
-export interface AuthUser {
-  id: string
-  name: string
-  operatorId: string
-  clearanceLevel: number
-  unit: string
-  role: string
-}
+import type { CurrentUserResponse } from '@cip/shared-types'
+import { authApi } from '../services/endpoints'
+import {
+  getAccessToken, setAccessToken, setOnUnauthorized, setStepUpToken,
+} from '../services/client'
 
-interface AuthState {
-  isAuthenticated: boolean  // passed username/password
-  hasPassed2FA: boolean     // completed OTP step
-  user: AuthUser | null
-}
+export type AuthStatus = 'unauthenticated' | 'mfa_pending' | 'authenticated'
 
-type AuthAction =
-  | { type: 'LOGIN_SUCCESS'; payload: AuthUser }
-  | { type: 'MFA_SUCCESS' }
-  | { type: 'LOGOUT' }
+/** The authenticated operator (shape from GET /auth/me). */
+export type AuthUser = CurrentUserResponse
 
-function reducer(state: AuthState, action: AuthAction): AuthState {
-  switch (action.type) {
-    case 'LOGIN_SUCCESS':
-      return { ...state, isAuthenticated: true, hasPassed2FA: false, user: action.payload }
-    case 'MFA_SUCCESS':
-      return { ...state, hasPassed2FA: true }
-    case 'LOGOUT':
-      return { isAuthenticated: false, hasPassed2FA: false, user: null }
-    default:
-      return state
-  }
-}
+export type LoginOutcome = 'mfa_required' | 'authenticated'
 
-const initialState: AuthState = {
-  isAuthenticated: false,
-  hasPassed2FA: false,
-  user: null,
-}
-
-// ── Mock user store ────────────────────────────────────────────────────────────
-const MOCK_USERS: Record<string, AuthUser & { password: string }> = {
-  'op.chen': {
-    id: 'usr-001', password: 'sentinel',
-    name: 'K. Chen', operatorId: 'OP-774A',
-    clearanceLevel: 4, unit: 'Alpha-7', role: 'Senior Analyst',
-  },
-  'admin': {
-    id: 'usr-002', password: 'admin',
-    name: 'System Admin', operatorId: 'SYS-001',
-    clearanceLevel: 5, unit: 'Command', role: 'Administrator',
-  },
-  'demo': {
-    id: 'usr-003', password: 'demo',
-    name: 'Demo Operator', operatorId: 'OP-219C',
-    clearanceLevel: 3, unit: 'Beta-3', role: 'Analyst',
-  },
-}
-
-// ── Context ────────────────────────────────────────────────────────────────────
 interface AuthContextValue {
-  state: AuthState
-  login: (username: string, password: string) => Promise<boolean>
-  verify2FA: (code: string) => Promise<boolean>
-  logout: () => void
+  /** true while a persisted session is being restored on mount. */
+  initializing: boolean
+  status: AuthStatus
+  user: AuthUser | null
+  /** username/official id captured at step 1, shown on the MFA greeting. */
+  pendingUsername: string | null
+  login: (usernameOrOfficialId: string, password: string) => Promise<LoginOutcome>
+  verifyMfa: (otpCode: string) => Promise<void>
+  logout: () => Promise<void>
+  refreshUser: () => Promise<void>
+  hasPermission: (permission: string) => boolean
+  hasRole: (...roles: string[]) => boolean
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(reducer, initialState)
+  const [initializing, setInitializing] = useState(true)
+  const [status, setStatus] = useState<AuthStatus>('unauthenticated')
+  const [user, setUser] = useState<AuthUser | null>(null)
+  const [pendingUsername, setPendingUsername] = useState<string | null>(null)
+  const mfaChallengeTokenRef = useRef<string | null>(null)
 
-  const login = useCallback(async (username: string, password: string): Promise<boolean> => {
-    // Simulate network delay
-    await new Promise(r => setTimeout(r, 800))
-    const record = MOCK_USERS[username.toLowerCase().trim()]
-    if (record && record.password === password) {
-      const { password: _pw, ...user } = record
-      dispatch({ type: 'LOGIN_SUCCESS', payload: user })
-      return true
-    }
-    return false
+  const clearSession = useCallback(() => {
+    setAccessToken(null)
+    setStepUpToken(null)
+    mfaChallengeTokenRef.current = null
+    setUser(null)
+    setPendingUsername(null)
+    setStatus('unauthenticated')
   }, [])
 
-  const verify2FA = useCallback(async (code: string): Promise<boolean> => {
-    await new Promise(r => setTimeout(r, 600))
-    // Accept any 6-digit code for demo, or the hardcoded "473829"
-    if (code.length === 6 && (/^\d{6}$/.test(code) || code === '473829')) {
-      dispatch({ type: 'MFA_SUCCESS' })
-      return true
-    }
-    return false
+  const applyUser = useCallback((u: AuthUser) => {
+    setUser(u)
+    setPendingUsername(null)
+    setStatus('authenticated')
   }, [])
 
-  const logout = useCallback(() => dispatch({ type: 'LOGOUT' }), [])
+  const refreshUser = useCallback(async () => {
+    applyUser(await authApi.me())
+  }, [applyUser])
+
+  // Restore a persisted session on mount; any 401 clears the stale token.
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      if (!getAccessToken()) {
+        if (!cancelled) setInitializing(false)
+        return
+      }
+      try {
+        const me = await authApi.me()
+        if (!cancelled) applyUser(me)
+      } catch {
+        if (!cancelled) clearSession()
+      } finally {
+        if (!cancelled) setInitializing(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [applyUser, clearSession])
+
+  // Any later 401 (expired session mid-use) force-logs-out; ProtectedRoute
+  // reacts to the status change and redirects to /login.
+  useEffect(() => {
+    setOnUnauthorized(() => {
+      if (status === 'authenticated') clearSession()
+    })
+    return () => setOnUnauthorized(null)
+  }, [status, clearSession])
+
+  const login = useCallback(
+    async (usernameOrOfficialId: string, password: string): Promise<LoginOutcome> => {
+      const res = await authApi.login({ username_or_official_id: usernameOrOfficialId, password })
+      if (res.mfa_required) {
+        mfaChallengeTokenRef.current = res.mfa_challenge_token
+        setPendingUsername(usernameOrOfficialId)
+        setStatus('mfa_pending')
+        return 'mfa_required'
+      }
+      setAccessToken(res.access_token)
+      applyUser(await authApi.me())
+      return 'authenticated'
+    },
+    [applyUser],
+  )
+
+  const verifyMfa = useCallback(
+    async (otpCode: string) => {
+      const token = mfaChallengeTokenRef.current
+      if (!token) throw new Error('No MFA challenge is in progress')
+      const res = await authApi.verifyMfa({ mfa_challenge_token: token, otp_code: otpCode })
+      mfaChallengeTokenRef.current = null
+      setAccessToken(res.access_token)
+      applyUser(await authApi.me())
+    },
+    [applyUser],
+  )
+
+  const logout = useCallback(async () => {
+    try {
+      await authApi.logout()
+    } catch {
+      /* stateless logout: discard tokens locally regardless of network result */
+    }
+    clearSession()
+  }, [clearSession])
+
+  const hasPermission = useCallback(
+    (permission: string) => user?.permissions.includes(permission) ?? false,
+    [user],
+  )
+  const hasRole = useCallback((...roles: string[]) => !!user && roles.includes(user.role), [user])
 
   return (
-    <AuthContext.Provider value={{ state, login, verify2FA, logout }}>
+    <AuthContext.Provider
+      value={{
+        initializing,
+        status,
+        user,
+        pendingUsername,
+        login,
+        verifyMfa,
+        logout,
+        refreshUser,
+        hasPermission,
+        hasRole,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   )

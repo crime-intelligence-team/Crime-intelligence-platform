@@ -7,6 +7,19 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      '@cip/shared-types': path.resolve(__dirname, '../../packages/shared-types/src/index.ts'),
+    },
+  },
+  server: {
+    port: 5173,
+    proxy: {
+      '/api/v1': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
+    },
+    fs: {
+      allow: [path.resolve(__dirname, '../..')],
     },
   },
   build: {

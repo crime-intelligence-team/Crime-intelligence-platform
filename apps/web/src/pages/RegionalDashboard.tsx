@@ -1,31 +1,80 @@
+import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { BarChart, Bar, ResponsiveContainer, Cell, Tooltip } from 'recharts'
-import {
-  ArrowLeft, Cpu, Bus, Building2, HeartPulse, Wifi, ChevronRight
-} from 'lucide-react'
-import { karnatakaDistricts } from '../data/districts'
-import { incidentTrend72h } from '../data/analytics'
+import { BarChart, Bar, ResponsiveContainer, Cell, Tooltip, XAxis, YAxis } from 'recharts'
+import { ArrowLeft, MapPin, ShieldAlert, Activity, TrendingUp, TrendingDown, Minus } from 'lucide-react'
+import { useApi } from '../hooks/useApi'
+import { mapApi, dashboardApi } from '../services/endpoints'
 
-const entityIcons: Record<string, any> = {
-  wifi: Wifi, bus: Bus, building: Building2, medical: HeartPulse, server: Cpu,
+const classificationLabel: Record<string, string> = {
+  open_operational: 'Open Operational',
+  restricted_operational: 'Restricted Operational',
+  protected: 'Protected',
+  sealed: 'Sealed',
 }
-const statusDotColor: Record<string, string> = {
-  critical: 'bg-severity-critical', elevated: 'bg-severity-high', normal: 'bg-brand-500',
+
+const movementMeta: Record<string, { icon: any; color: string; label: string }> = {
+  increasing: { icon: TrendingUp, color: 'text-severity-critical', label: 'Increasing' },
+  decreasing: { icon: TrendingDown, color: 'text-severity-low', label: 'Decreasing' },
+  stable: { icon: Minus, color: 'text-text-tertiary', label: 'Stable' },
+}
+
+function KpiCard({ label, value, note }: { label: string; value: number; note?: string }) {
+  return (
+    <div className="bg-bg-surface-2 border border-border-subtle rounded-xl p-4 flex flex-col">
+      <p className="section-label mb-1.5">{label}</p>
+      <p className="text-3xl font-bold text-text-primary animate-count-up">{value.toLocaleString()}</p>
+      {note && <p className="text-[11px] font-medium text-text-secondary mt-1.5">{note}</p>}
+    </div>
+  )
 }
 
 export default function RegionalDashboard() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const district = karnatakaDistricts.find(d => d.id === id) ?? karnatakaDistricts[0]
+  const [window, setWindow] = useState<'7d' | '30d' | '90d'>('7d')
 
-  const peakIdx = incidentTrend72h.reduce((m, d, i, a) => d.v > a[m].v ? i : m, 0)
+  const { data: district, loading: districtLoading, error: districtError } = useApi(
+    () => (id ? mapApi.district(id) : Promise.resolve(null)),
+    [id],
+  )
+  const { data: dashboard, loading: dashLoading } = useApi(
+    () => (id ? dashboardApi.byRegion(id) : Promise.resolve(null)),
+    [id],
+  )
 
-  const categories = [
-    { label: 'Civil Unrest',    pct: 42, color: 'text-viz-1', bg: 'bg-viz-1' },
-    { label: 'Infrastructure',  pct: 28, color: 'text-viz-2', bg: 'bg-viz-2' },
-    { label: 'Cyber',           pct: 18, color: 'text-viz-3', bg: 'bg-viz-3' },
-    { label: 'Logistics',       pct: 12, color: 'text-viz-4', bg: 'bg-viz-4' },
-  ]
+  if (districtLoading || dashLoading) {
+    return (
+      <div className="h-full overflow-y-auto p-6 flex flex-col gap-4 animate-pulse">
+        <div className="h-7 w-64 bg-bg-surface-2 rounded-lg" />
+        <div className="grid grid-cols-4 gap-4">
+          {[0, 1, 2, 3].map(i => <div key={i} className="h-28 bg-bg-surface-2 rounded-xl" />)}
+        </div>
+        <div className="grid grid-cols-5 gap-4">
+          <div className="col-span-3 h-96 bg-bg-surface-2 rounded-xl" />
+          <div className="col-span-2 h-96 bg-bg-surface-2 rounded-xl" />
+        </div>
+      </div>
+    )
+  }
+
+  if (districtError || !district) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center gap-3 text-text-tertiary">
+        <p className="text-sm">Region not found or outside your jurisdiction.</p>
+        <button onClick={() => navigate('/map')} className="text-xs font-medium text-brand-500 hover:text-brand-400">
+          ← Back to Map
+        </button>
+      </div>
+    )
+  }
+
+  const trend = dashboard?.trends.find(t => t.window === window)
+  const trendPoints = trend?.points ?? []
+  const peakIdx = trendPoints.reduce((m, d, i, a) => (d.value > a[m].value ? i : m), 0)
+  const total = trendPoints.reduce((s, p) => s + p.value, 0)
+
+  const hotspots = dashboard?.hotspots ?? []
+  const priorityEntities = dashboard?.priority_entities ?? []
 
   return (
     <div className="h-full overflow-y-auto p-6">
@@ -47,30 +96,10 @@ export default function RegionalDashboard() {
 
       {/* Stats row */}
       <div className="grid grid-cols-4 gap-4 mb-5 stagger-children">
-        <div className="bg-bg-surface-2 border border-border-subtle rounded-xl p-4 flex flex-col">
-          <p className="section-label mb-1.5">Total Active Incidents</p>
-          <p className="text-3xl font-bold text-text-primary animate-count-up">{district.totalIncidents.toLocaleString()}</p>
-          <p className="text-[11px] font-medium text-severity-critical mt-1.5">▲ +{district.trend}% vs 24h</p>
-        </div>
-        <div className="bg-bg-surface-2 border border-border-subtle rounded-xl p-4 flex flex-col">
-          <p className="section-label mb-1.5">Average Risk Score</p>
-          <p className="text-3xl font-bold text-text-primary animate-count-up">
-            {district.riskScore}<span className="text-[14px] font-medium text-text-secondary ml-1">/100</span>
-          </p>
-          <p className="text-[11px] font-medium text-text-secondary mt-1.5">— Stable</p>
-        </div>
-        <div className="bg-bg-surface-2 border border-border-subtle rounded-xl p-4 flex flex-col">
-          <p className="section-label mb-1.5">Deployed Assets</p>
-          <p className="text-3xl font-bold text-text-primary animate-count-up">42</p>
-          <p className="text-[11px] font-medium text-severity-low mt-1.5">✓ All units responding</p>
-        </div>
-        <div className="bg-bg-surface-2 border border-border-subtle rounded-xl p-4 flex flex-col">
-          <p className="section-label mb-1.5">System Uptime</p>
-          <p className="text-3xl font-bold text-text-primary animate-count-up">
-            99.98<span className="text-[14px] font-medium text-text-secondary ml-1">%</span>
-          </p>
-          <p className="text-[11px] font-medium text-text-secondary mt-1.5">Node cluster nominal</p>
-        </div>
+        <KpiCard label="Total Incidents" value={dashboard?.kpis.total_incidents ?? 0} note="All-time in region" />
+        <KpiCard label="Open Cases" value={dashboard?.kpis.open_cases ?? 0} note="Currently under investigation" />
+        <KpiCard label="Active Gangs" value={dashboard?.kpis.active_gangs ?? 0} note="Tracked organizations" />
+        <KpiCard label="High-Priority Entities" value={dashboard?.kpis.high_priority_entities ?? 0} note="Above review threshold" />
       </div>
 
       {/* Main grid */}
@@ -80,17 +109,27 @@ export default function RegionalDashboard() {
           {/* Incident trend */}
           <div className="bg-bg-surface-2 border border-border-subtle rounded-xl p-5">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-sm font-semibold text-text-primary">Incident Trend (72h)</h2>
-              <button className="text-[10px] font-semibold tracking-wider text-text-secondary border border-border-subtle rounded px-2 py-1 hover:bg-bg-surface-hover transition-colors">
-                EXPORT
-              </button>
+              <h2 className="text-sm font-semibold text-text-primary">Incident Trend</h2>
+              <div className="flex items-center gap-1">
+                {(['7d', '30d', '90d'] as const).map(w => (
+                  <button key={w} onClick={() => setWindow(w)}
+                    className={`text-[10px] font-semibold tracking-wider px-2.5 py-1 rounded transition-colors ${window === w ? 'bg-brand-500/15 text-brand-500 border border-brand-500/30' : 'text-text-secondary border border-border-subtle hover:bg-bg-surface-hover'}`}>
+                    {w.toUpperCase()}
+                  </button>
+                ))}
+              </div>
             </div>
+            <p className="text-[11px] text-text-secondary -mt-2 mb-3">
+              {total} incidents in the last {window === '7d' ? 7 : window === '30d' ? 30 : 90} days (complete days only)
+            </p>
             <div className="h-48">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={incidentTrend72h} barSize={18}>
-                  <Bar dataKey="v" radius={[2,2,0,0]}>
-                    {incidentTrend72h.map((_, i) => (
-                      <Cell key={i} fill={i === peakIdx ? '#ef4444' : '#3E4B5A'} />
+                <BarChart data={trendPoints} barSize={window === '7d' ? 18 : 10}>
+                  <XAxis dataKey="date" tickFormatter={(d: string) => d.slice(5)} tick={{ fontSize: 10, fill: '#64748b' }} tickLine={false} axisLine={false} />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: '#64748b' }} tickLine={false} axisLine={false} width={28} />
+                  <Bar dataKey="value" radius={[2, 2, 0, 0]}>
+                    {trendPoints.map((p, i) => (
+                      <Cell key={p.date} fill={i === peakIdx ? '#ef4444' : '#3E4B5A'} />
                     ))}
                   </Bar>
                   <Tooltip
@@ -103,68 +142,90 @@ export default function RegionalDashboard() {
             </div>
           </div>
 
-          {/* Incident distribution */}
+          {/* Hotspots */}
           <div className="bg-bg-surface-2 border border-border-subtle rounded-xl p-5">
-            <h2 className="text-sm font-semibold text-text-primary mb-4">Incident Distribution by Category</h2>
-            <div className="grid grid-cols-4 gap-4">
-              {categories.map(c => (
-                <div key={c.label}>
-                  <p className="section-label mb-1.5">{c.label}</p>
-                  <p className={`text-xl font-bold mb-2 ${c.color}`}>{c.pct}%</p>
-                  <div className="h-[3px] rounded-full bg-bg-surface-hover overflow-hidden">
-                    <div className={`h-full rounded-full ${c.bg} opacity-90`} style={{ width: `${c.pct}%` }} />
-                  </div>
-                </div>
-              ))}
+            <div className="flex items-center gap-2 mb-4">
+              <ShieldAlert className="w-4 h-4 text-severity-critical" />
+              <h2 className="text-sm font-semibold text-text-primary">Regional Hotspots (30-day window)</h2>
             </div>
+            {hotspots.length === 0 ? (
+              <p className="text-xs text-text-tertiary py-4 text-center">No hotspots recorded in the trailing window.</p>
+            ) : (
+              <div className="flex flex-col">
+                {hotspots.map((h, i) => {
+                  const m = movementMeta[h.movement ?? 'stable'] ?? movementMeta.stable
+                  const MovementIcon = m.icon
+                  return (
+                    <div key={h.location_id} className="flex items-center gap-3 py-2.5 border-b border-border-subtle last:border-0">
+                      <span className="w-6 h-6 rounded bg-bg-surface-hover border border-border-default flex items-center justify-center text-[11px] font-bold font-mono text-text-secondary shrink-0">
+                        {i + 1}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[13px] font-medium text-text-primary truncate">{h.label}</p>
+                        <p className="text-[11px] text-text-secondary">{h.incident_count} incidents</p>
+                      </div>
+                      <span className={`flex items-center gap-1 text-[11px] font-medium ${m.color}`}>
+                        <MovementIcon className="w-3.5 h-3.5" /> {m.label}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
         </div>
 
         {/* Right column (2/5) */}
         <div className="col-span-2 space-y-4">
-          {/* Threat level */}
-          <div className="bg-bg-surface-2 border border-severity-critical/30 rounded-xl p-5 relative overflow-hidden bg-severity-critical/5">
-            <p className="section-label mb-4">Regional Threat Level</p>
-            {/* Standard chevron */}
-            <div className="absolute right-4 top-5 text-text-tertiary opacity-50">
-              <ChevronRight className="w-5 h-5" />
+          {/* Region snapshot */}
+          <div className="bg-bg-surface-2 border border-border-subtle rounded-xl p-5">
+            <div className="flex items-center gap-2 mb-4">
+              <MapPin className="w-4 h-4 text-brand-500" />
+              <h2 className="text-sm font-semibold text-text-primary">Region Snapshot</h2>
             </div>
-            <p className="text-3xl font-bold text-severity-critical tracking-tight">CRITICAL</p>
-            <p className="text-[13px] text-text-secondary mt-1.5">Escalation Protocol Alpha Active</p>
-            <div className="flex items-center gap-2 mt-4 pt-3 border-t border-border-default/50">
-              <span className="w-1.5 h-1.5 rounded-full bg-severity-critical animate-pulse" />
-              <span className="text-[11px] text-text-primary font-mono font-medium">PROT-ALPHA ENGAGED</span>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-bg-surface-hover/50 border border-border-subtle rounded-lg p-3">
+                <p className="section-label mb-1">Code</p>
+                <p className="font-mono text-xs text-text-primary">{district.code}</p>
+              </div>
+              <div className="bg-bg-surface-hover/50 border border-border-subtle rounded-lg p-3">
+                <p className="section-label mb-1">Population</p>
+                <p className="text-sm font-semibold text-text-primary">
+                  {district.population != null ? district.population.toLocaleString() : '—'}
+                </p>
+              </div>
+              <div className="col-span-2 bg-bg-surface-hover/50 border border-border-subtle rounded-lg p-3">
+                <p className="section-label mb-1">Classification</p>
+                <p className="text-sm font-semibold text-text-primary">
+                  {classificationLabel[district.classification] ?? district.classification}
+                </p>
+              </div>
             </div>
           </div>
 
           {/* Priority entities */}
           <div className="bg-bg-surface-2 border border-border-subtle rounded-xl p-5 flex flex-col">
-            <h2 className="text-sm font-semibold text-text-primary mb-3">Top Priority Entities</h2>
-            <div className="flex flex-col flex-1">
-              {district.priorityEntities.map(e => {
-                const Icon = entityIcons[e.icon] ?? Cpu
-                const iconBg = e.status === 'critical' ? 'bg-severity-critical/10 border-severity-critical/20' : e.status === 'elevated' ? 'bg-severity-high/10 border-severity-high/20' : 'bg-bg-surface-hover border-border-default'
-                const iconColor = e.status === 'critical' ? 'text-severity-critical' : e.status === 'elevated' ? 'text-severity-high' : 'text-text-secondary'
-                return (
-                  <div key={e.id} className="flex items-center gap-3 py-2.5 border-b border-border-subtle last:border-0 hover:bg-bg-surface-hover/50 transition-colors rounded-lg px-2 -mx-2">
-                    <div className={`w-7 h-7 rounded border flex items-center justify-center shrink-0 ${iconBg}`}>
-                      <Icon className={`w-3.5 h-3.5 ${iconColor}`} />
-                    </div>
+            <div className="flex items-center gap-2 mb-3">
+              <Activity className="w-4 h-4 text-severity-high" />
+              <h2 className="text-sm font-semibold text-text-primary">Top Priority Entities</h2>
+            </div>
+            {priorityEntities.length === 0 ? (
+              <p className="text-xs text-text-tertiary py-4 text-center">
+                No priority entities recorded yet.
+              </p>
+            ) : (
+              <div className="flex flex-col flex-1">
+                {priorityEntities.map(e => (
+                  <div key={e.id} className="flex items-center gap-3 py-2.5 border-b border-border-subtle last:border-0">
                     <div className="flex-1 min-w-0">
-                      <p className="font-mono text-[11px] font-medium text-text-primary truncate">{e.name}</p>
-                      <p className="text-[10px] text-text-secondary">{e.sector}</p>
+                      <p className="font-mono text-[11px] font-medium text-text-primary truncate">{e.label}</p>
+                      <p className="text-[10px] text-text-secondary capitalize">{e.type}</p>
                     </div>
-                    <span className={`w-2 h-2 rounded-full shrink-0 ${statusDotColor[e.status]}`} />
+                    <span className="text-[10px] text-text-tertiary font-mono">{e.confidence?.band ?? '—'}</span>
                   </div>
-                )
-              })}
-            </div>
-            
-            <div className="mt-2 pt-3 border-t border-border-default/50 text-center">
-              <button className="text-[11px] uppercase font-semibold tracking-wider text-brand-500 hover:text-brand-400 transition-colors">
-                View all priority entities &rarr;
-              </button>
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>

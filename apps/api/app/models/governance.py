@@ -1,5 +1,6 @@
 from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import relationship
 
 from app.core.database import Base
 from app.models.base import ClassificationLevel, TimestampMixin, uuid_pk_column
@@ -137,3 +138,5 @@ class AuditLogEntry(Base, TimestampMixin):
     ip_address = Column(String, nullable=True)
     device_identity = Column(String, nullable=True)
     detail = Column(Text, nullable=True)
+
+    actor = relationship("Officer", foreign_keys=[actor_id])

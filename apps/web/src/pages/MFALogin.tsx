@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Shield, Lock, Clock, ArrowLeft, AlertTriangle, CheckCircle, Info } from 'lucide-react'
+import { ApiError } from '../services/client'
 import { useAuth } from '../context/AuthContext'
 
 // Decorative Background Pattern for MFA (matches Login)
@@ -24,12 +25,12 @@ function BackgroundPattern() {
 
 export default function MFALogin() {
   const navigate = useNavigate()
-  const { state, verify2FA } = useAuth()
+  const { status, verifyMfa, pendingUsername } = useAuth()
 
-  // Guard: if user hasn't done step-1, send back to login
+  // Guard: only reachable with an in-progress MFA challenge.
   useEffect(() => {
-    if (!state.isAuthenticated) navigate('/login', { replace: true })
-  }, [state.isAuthenticated, navigate])
+    if (status !== 'mfa_pending') navigate('/login', { replace: true })
+  }, [status, navigate])
 
   const [otp, setOtp]             = useState<string[]>(['', '', '', '', '', ''])
   const [seconds, setSeconds]     = useState(116)
@@ -65,15 +66,16 @@ export default function MFALogin() {
     if (code.length < 6) { setError('Enter all 6 digits to verify.'); return }
     setLoading(true)
     setError('')
-    const ok = await verify2FA(code)
-    setLoading(false)
-    if (ok) {
+    try {
+      await verifyMfa(code)
       setSuccess(true)
-      setTimeout(() => navigate('/cases', { replace: true }), 900)
-    } else {
-      setError('Invalid code. Ensure you entered the correct 6-digit sequence.')
+      setTimeout(() => navigate('/cases', { replace: true }), 700)
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Verification failed. Please try again.')
       setOtp(['', '', '', '', '', ''])
       refs.current[0]?.focus()
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -126,10 +128,9 @@ export default function MFALogin() {
 
         <h2 className="text-2xl font-bold text-text-primary text-center mb-2">Two-Factor Authentication</h2>
         <p className="text-sm text-text-secondary text-center mb-8 leading-relaxed">
-          {state.user
-            ? <>Welcome back, <span className="text-text-primary font-medium">{state.user.name}</span>.<br />Enter the 6-digit code from your secure device ending in <span className="text-text-primary font-medium">**84</span>.</>
-            : 'Enter the 6-digit verification code sent to your registered secure device.'
-          }
+          {pendingUsername
+            ? <>Welcome back, <span className="text-text-primary font-medium">{pendingUsername}</span>.<br />Enter the 6-digit code from your authenticator app.</>
+            : 'Enter the 6-digit verification code from your authenticator app.'}
         </p>
 
         {/* OTP inputs — 3 + dash + 3 */}
@@ -140,6 +141,7 @@ export default function MFALogin() {
               ref={el => { refs.current[i] = el }}
               type="text"
               inputMode="numeric"
+              autoFocus={i === 0}
               maxLength={1}
               value={otp[i]}
               onChange={e => handleChange(i, e.target.value)}
@@ -171,32 +173,15 @@ export default function MFALogin() {
             <Clock className="w-4 h-4 text-text-tertiary" />
             {mm}:{ss}
           </span>
-          <button
-            onClick={() => setSeconds(120)}
-            disabled={seconds > 0}
-            className={`text-xs uppercase tracking-wider font-medium transition-colors ${
-              seconds > 0 
-                ? 'text-text-tertiary cursor-not-allowed' 
-                : 'text-brand-400 hover:text-brand-300'
-            }`}
-          >
-            Resend Code
-          </button>
+          <span className="text-[10px] uppercase tracking-wider text-text-tertiary">Code expires with challenge</span>
         </div>
 
-        {/* Hint + Quick fill */}
+        {/* Hint */}
         <div className="bg-severity-tint-info rounded-md p-4 mb-6">
-          <p className="text-xs text-severity-info flex items-center gap-1.5 mb-2 font-medium">
+          <p className="text-xs text-severity-info flex items-center gap-1.5 font-medium">
             <Info className="w-3.5 h-3.5" />
-            Demo: Enter any 6-digit code
+            Use the code from your registered authenticator app. Invalid attempts are audited.
           </p>
-          <button
-            type="button"
-            onClick={() => setOtp(['4', '7', '3', '8', '2', '9'])}
-            className="w-full py-1.5 rounded-sm bg-transparent border border-border-default hover:border-border-strong text-xs text-text-secondary hover:text-text-primary font-mono transition-colors"
-          >
-            Auto-Fill Code: 473829
-          </button>
         </div>
 
         {/* Error */}

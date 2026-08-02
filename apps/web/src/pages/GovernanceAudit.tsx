@@ -1,82 +1,168 @@
 import { useState } from 'react'
-import { Search, Filter, Download, ChevronLeft, ChevronRight } from 'lucide-react'
-import { AuditRiskBadge, AuditStatusBadge } from '../components/ui/Badge'
-import { auditLog } from '../data/governance'
+import { Search, Filter, ChevronLeft, ChevronRight, ShieldAlert, Loader2, History } from 'lucide-react'
+import { useAuth } from '../context/AuthContext'
+import { adminApi } from '../services/endpoints'
+import { useApi } from '../hooks/useApi'
+import type { AuditLogEntry } from '@cip/shared-types'
 
-const COLS = ['TIMESTAMP (UTC)', 'OPERATOR ID', 'ACTION TYPE', 'TARGET ENTITY', 'RISK', 'STATUS']
+const PAGE_SIZE = 25
+
+const inputCls = 'pl-8 pr-3 py-1.5 bg-surface-card border border-surface-border rounded-lg text-xs text-sentinel-100 placeholder-sentinel-500 focus:outline-none focus:border-accent-blue/40 w-56 transition-colors'
+
+const actionRisk: Record<string, string> = {
+  step_up: 'high',
+  mfa_enrolled: 'medium',
+  exception_approved: 'high',
+  exception_denied: 'medium',
+  merge_executed: 'high',
+  merge_reversed: 'medium',
+  confidence_review_submitted: 'medium',
+  confidence_review_accepted: 'high',
+  login: 'low',
+  export: 'medium',
+}
+
+function ActionBadge({ action }: { action: string }) {
+  const risk = actionRisk[action] ?? (action.startsWith('exception') ? 'medium' : 'low')
+  const cls =
+    risk === 'high'
+      ? 'bg-severity-tint-critical text-severity-critical border-severity-critical/30'
+      : risk === 'medium'
+        ? 'bg-severity-tint-high text-severity-high border-severity-high/30'
+        : 'bg-surface-hover text-sentinel-400 border-surface-border'
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-sm border text-[10px] font-bold tracking-wider ${cls}`}>
+      {action.toUpperCase()}
+    </span>
+  )
+}
+
+function fmt(iso: string | null): string {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`
+}
 
 export default function GovernanceAudit() {
+  const { hasPermission } = useAuth()
+  const canView = hasPermission('audit:view')
+
   const [page, setPage] = useState(1)
   const [search, setSearch] = useState('')
-  const total = 247
-  const filtered = auditLog.filter(e =>
-    !search || [e.operatorId, e.actionType, e.targetEntity].some(s => s.toLowerCase().includes(search.toLowerCase()))
+  const [actionFilter, setActionFilter] = useState('')
+
+  const { data, loading, error, refetch } = useApi(
+    () => adminApi.audit({ page, page_size: PAGE_SIZE, q: search || undefined, action: actionFilter || undefined }),
+    [page, search, actionFilter],
   )
 
+  function applySearch(e: React.FormEvent) {
+    e.preventDefault()
+    setPage(1)
+    refetch()
+  }
+
+  if (!canView) {
+    return (
+      <div className="h-full flex items-center justify-center bg-surface-base">
+        <div className="max-w-sm text-center p-8 bg-surface-card border border-surface-border rounded-xl">
+          <ShieldAlert className="w-6 h-6 text-accent-amber mx-auto mb-3" />
+          <p className="text-sm font-semibold text-sentinel-100">Supervisor or Administrator Required</p>
+          <p className="text-xs text-sentinel-400 mt-1.5 leading-relaxed">
+            The audit log requires the audit:view permission.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  const entries = data?.items ?? []
+  const total = data?.total ?? 0
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col bg-surface-base">
       {/* Header */}
       <div className="px-6 py-4 border-b border-surface-border shrink-0 flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-lg font-bold text-sentinel-50">Global Audit Log</h1>
-          <p className="text-xs text-sentinel-400 mt-0.5">Comprehensive record of all system events and access attempts.</p>
+          <h1 className="text-lg font-bold text-sentinel-50 flex items-center gap-2">
+            <History className="w-4 h-4 text-accent-blue" /> Global Audit Log
+          </h1>
+          <p className="text-xs text-sentinel-400 mt-0.5">Append-only record of searches, views, exports, notes, and approvals.</p>
         </div>
         <div className="flex items-center gap-2">
-          <div className="relative">
+          <form onSubmit={applySearch} className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-sentinel-500" />
-            <input value={search} onChange={e => setSearch(e.target.value)}
-              placeholder="Search log entries..."
-              className="pl-8 pr-3 py-1.5 bg-surface-card border border-surface-border rounded-lg text-xs text-sentinel-100 placeholder-sentinel-500 focus:outline-none focus:border-accent-blue/40 w-52 transition-colors" />
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search log entries..."
+              className={inputCls} />
+          </form>
+          <div className="relative">
+            <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-sentinel-500 pointer-events-none" />
+            <select value={actionFilter} onChange={e => { setActionFilter(e.target.value); setPage(1) }}
+              className="pl-8 pr-3 py-1.5 bg-surface-card border border-surface-border rounded-lg text-xs text-sentinel-100 focus:outline-none focus:border-accent-blue/40 transition-colors">
+              <option value="">All actions</option>
+              {[...new Set(entries.map(e => e.action))].sort().map(a => (
+                <option key={a} value={a}>{a}</option>
+              ))}
+            </select>
           </div>
-          <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-sentinel-300 border border-surface-border hover:bg-surface-hover transition-colors">
-            <Filter className="w-3.5 h-3.5" /> Filter
-          </button>
-          <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-sentinel-300 border border-surface-border hover:bg-surface-hover transition-colors">
-            <Download className="w-3.5 h-3.5" /> Export
-          </button>
         </div>
       </div>
 
       {/* Table header */}
       <div className="grid border-b border-surface-border bg-surface-raised/50 shrink-0"
-        style={{ gridTemplateColumns: '160px 120px 1fr 1fr 80px 100px' }}>
-        {COLS.map(c => (
-          <div key={c} className="px-4 py-2.5 section-label">{c}</div>
-        ))}
+        style={{ gridTemplateColumns: '150px 160px 150px 1fr 90px' }}>
+        <div className="px-4 py-2.5 section-label">TIMESTAMP (UTC)</div>
+        <div className="px-4 py-2.5 section-label">ACTOR</div>
+        <div className="px-4 py-2.5 section-label">ACTION</div>
+        <div className="px-4 py-2.5 section-label">RESOURCE / DETAIL</div>
+        <div className="px-4 py-2.5 section-label">ID</div>
       </div>
 
       {/* Rows */}
       <div className="flex-1 overflow-y-auto">
-        {filtered.map(e => (
-          <div key={e.id}
-            className="grid items-center border-b border-surface-border hover:bg-surface-hover transition-colors"
-            style={{ gridTemplateColumns: '160px 120px 1fr 1fr 80px 100px' }}>
-            <div className="px-4 py-3 font-mono text-[10px] text-sentinel-300 leading-tight whitespace-pre-line">{e.timestamp}</div>
-            <div className="px-4 py-3 font-mono text-[11px] text-sentinel-100">{e.operatorId}</div>
-            <div className="px-4 py-3 text-xs text-sentinel-200">{e.actionType}</div>
-            <div className="px-4 py-3 font-mono text-[11px] text-sentinel-300">{e.targetEntity}</div>
-            <div className="px-4 py-3"><AuditRiskBadge risk={e.risk} /></div>
-            <div className="px-4 py-3"><AuditStatusBadge status={e.status} /></div>
+        {loading && !entries.length ? (
+          <div className="p-6 flex items-center justify-center text-sentinel-500">
+            <Loader2 className="w-4 h-4 animate-spin mr-2" /> Loading audit trail…
           </div>
-        ))}
+        ) : error ? (
+          <div className="p-6 text-xs text-severity-critical bg-severity-critical/10 border border-severity-critical/30 rounded-lg m-6">
+            {error}
+          </div>
+        ) : entries.length === 0 ? (
+          <div className="p-10 text-center text-xs text-sentinel-500">No audit entries match this filter.</div>
+        ) : (
+          entries.map((e: AuditLogEntry) => (
+            <div key={e.id}
+              className="grid items-center border-b border-surface-border hover:bg-surface-hover transition-colors"
+              style={{ gridTemplateColumns: '150px 160px 150px 1fr 90px' }}>
+              <div className="px-4 py-3 font-mono text-[10px] text-sentinel-300">{fmt(e.created_at)}</div>
+              <div className="px-4 py-3 font-mono text-[11px] text-sentinel-100 truncate">
+                {e.actor_name ?? (e.actor_id ? `${e.actor_id.slice(0, 8)}…` : 'SYSTEM')}
+              </div>
+              <div className="px-4 py-3"><ActionBadge action={e.action} /></div>
+              <div className="px-4 py-3 text-xs text-sentinel-300 leading-relaxed">
+                <span className="text-sentinel-200">{e.resource_type ?? '—'}</span>
+                {e.detail ? <span className="block font-mono text-[10px] text-sentinel-400 truncate max-w-[560px]">{e.detail}</span> : null}
+              </div>
+              <div className="px-4 py-3 font-mono text-[10px] text-sentinel-500 truncate">{e.resource_id?.slice(0, 8) ?? '—'}</div>
+            </div>
+          ))
+        )}
       </div>
 
       {/* Footer pagination */}
       <div className="px-6 py-3 border-t border-surface-border shrink-0 flex items-center justify-between">
-        <span className="font-mono text-[11px] text-sentinel-400">{total} total entries</span>
+        <span className="font-mono text-[11px] text-sentinel-400">{total} total entries · page {page}/{totalPages}</span>
         <div className="flex items-center gap-2">
-          <button onClick={() => setPage(p => Math.max(1, p-1))} disabled={page===1}
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
             className="p-1.5 rounded text-sentinel-400 hover:text-sentinel-200 hover:bg-surface-hover disabled:opacity-40 transition-colors">
             <ChevronLeft className="w-3.5 h-3.5" />
           </button>
-          {[1,2,3,'...',10].map((p, i) => (
-            typeof p === 'number'
-              ? <button key={i} onClick={() => setPage(p)}
-                  className={`w-7 h-7 rounded text-xs font-medium transition-colors ${p===page ? 'bg-accent-blue text-white' : 'text-sentinel-300 hover:bg-surface-hover'}`}>{p}</button>
-              : <span key={i} className="text-sentinel-500 text-xs">...</span>
-          ))}
-          <button onClick={() => setPage(p => p+1)}
-            className="p-1.5 rounded text-sentinel-400 hover:text-sentinel-200 hover:bg-surface-hover transition-colors">
+          <span className="font-mono text-xs text-sentinel-400">{page}</span>
+          <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages}
+            className="p-1.5 rounded text-sentinel-400 hover:text-sentinel-200 hover:bg-surface-hover disabled:opacity-40 transition-colors">
             <ChevronRight className="w-3.5 h-3.5" />
           </button>
         </div>

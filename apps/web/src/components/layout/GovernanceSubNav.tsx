@@ -2,11 +2,12 @@ import { NavLink } from 'react-router-dom'
 
 const TABS = [
   { label: 'Security',   to: '/governance'             },
-  { label: 'Integrity',  to: '/governance/integrity'   },
+  { label: 'Reviews',    to: '/governance/integrity'   },
   { label: 'Audit Logs', to: '/governance/audit'       },
   { label: 'Protocols',  to: '/governance/protocols'   },
   { label: 'Directives', to: '/governance/directives'  },
   { label: 'Access',     to: '/governance/access'      },
+  { label: 'Resolution', to: '/governance/resolution'  },
 ]
 
 export function GovernanceSubNav() {

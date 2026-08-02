@@ -324,6 +324,7 @@ def _relationship_out(
     the graph never contributes visibility metadata."""
     return RelationshipOut(
         id=relationship_id,
+        mirror_id=str(mirror.id),
         type=relationship_type,
         source_entity=source,
         target_entity=target,

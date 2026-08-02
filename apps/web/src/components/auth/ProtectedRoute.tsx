@@ -3,13 +3,13 @@ import { useAuth } from '../../context/AuthContext'
 
 /**
  * ProtectedRoute — blocks unauthenticated access.
- * Redirects to /login if credentials not provided.
- * Redirects to /login/mfa if credentials valid but MFA not completed.
+ * Redirects to /login unless the session is fully authenticated (MFA passed).
+ * Returns null briefly while a persisted session is being restored.
  */
 export function ProtectedRoute() {
-  const { state } = useAuth()
-  if (!state.isAuthenticated) return <Navigate to="/login" replace />
-  if (!state.hasPassed2FA)    return <Navigate to="/login/mfa" replace />
+  const { status, initializing } = useAuth()
+  if (initializing) return null
+  if (status !== 'authenticated') return <Navigate to="/login" replace />
   return <Outlet />
 }
 
@@ -18,7 +18,8 @@ export function ProtectedRoute() {
  * Redirects to /cases if fully authenticated.
  */
 export function GuestOnlyRoute() {
-  const { state } = useAuth()
-  if (state.isAuthenticated && state.hasPassed2FA) return <Navigate to="/cases" replace />
+  const { status, initializing } = useAuth()
+  if (initializing) return null
+  if (status === 'authenticated') return <Navigate to="/cases" replace />
   return <Outlet />
 }

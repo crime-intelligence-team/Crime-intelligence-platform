@@ -1,122 +1,148 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { TabBar } from '../components/ui/TabBar'
-import { RiskScoreBadge } from '../components/ui/Badge'
 import { Pagination } from '../components/ui/Pagination'
-import { entityRegistry } from '../data/networkGraph'
-import { Cpu, User, Building2, Network, CheckSquare, Square } from 'lucide-react'
+import { Cpu, User, Building2, Car, MapPin, Search, ChevronRight } from 'lucide-react'
+import { useApi } from '../hooks/useApi'
+import { networkApi } from '../services/endpoints'
+import { useNavigate } from 'react-router-dom'
+import type { EntityType } from '@cip/shared-types'
 
 const typeIconMap: Record<string, any> = {
-  infrastructure: Cpu, persona: User, organization: Building2, gateway: Network, unknown: Cpu,
+  person: User, organization: Building2, vehicle: Car, device: Cpu, address: MapPin, unknown: Cpu,
 }
 
-function TrafficBar({ value, max = 100, unit }: { value: number; max?: number; unit: string }) {
-  const pct = Math.min(100, (value / (max || 1)) * 100)
-  const barColor = value >= 30 ? '#f43f5e' : value >= 10 ? '#f59e0b' : '#3b82f6'
-  return (
-    <div className="flex items-center gap-2">
-      <div className="w-16 h-1.5 bg-surface-hover rounded-full overflow-hidden shrink-0">
-        <div className="h-full rounded-full" style={{ width: `${pct}%`, background: barColor }} />
-      </div>
-      <span className="font-mono text-[11px] text-sentinel-300">{value}{unit}</span>
-    </div>
-  )
+const typeColors: Record<string, string> = {
+  person: 'bg-accent-blue/10 text-accent-blue border-accent-blue/20',
+  organization: 'bg-severity-high/10 text-severity-high border-severity-high/20',
+  vehicle: 'bg-severity-low/10 text-severity-low border-severity-low/20',
+  device: 'bg-viz-3/10 text-viz-3 border-viz-3/20',
+  address: 'bg-surface-hover text-sentinel-300 border-surface-border',
+}
+
+const ENTITY_TYPES: (EntityType | 'all')[] = ['all', 'person', 'organization', 'vehicle', 'device', 'address']
+
+const classificationPill: Record<string, string> = {
+  open_operational: 'bg-severity-tint-low text-severity-low border-severity-low/30',
+  restricted_operational: 'bg-severity-tint-info text-severity-info border-severity-info/30',
+  protected: 'bg-severity-tint-high text-severity-high border-severity-high/30',
+  sealed: 'bg-severity-tint-critical text-severity-critical border-severity-critical/30',
+}
+const classificationLabel: Record<string, string> = {
+  open_operational: 'OPEN OPERATIONAL',
+  restricted_operational: 'RESTRICTED OPERATIONAL',
+  protected: 'PROTECTED',
+  sealed: 'SEALED',
 }
 
 export default function NodeRegistry() {
+  const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState('Entity Registry')
   const [page, setPage] = useState(1)
-  const [highRiskOnly, setHighRiskOnly] = useState(false)
-  const [activeAnomalies, setActiveAnomalies] = useState(false)
+  const [typeFilter, setTypeFilter] = useState<EntityType | 'all'>('all')
+  const [query, setQuery] = useState('')
 
-  const filtered = entityRegistry.filter(n => {
-    if (highRiskOnly && n.riskScore < 75) return false
-    if (activeAnomalies && n.status === 'normal') return false
-    return true
-  })
+  const { data: result, loading, error, refetch } = useApi(
+    () => networkApi.search(query, typeFilter === 'all' ? undefined : typeFilter, page, 10),
+    [page, typeFilter, query],
+  )
 
-  const COLS = ['ENTITY ID','TYPE','CONNECTIONS','TRAFFIC VOL (24H)','RISK SCORE','LAST SIGNAL']
+  useEffect(() => { setPage(1) }, [typeFilter, query])
+
+  const entities = result?.items ?? []
+  const total = result?.total ?? 0
+
+  const COLS = ['ENTITY ID', 'TYPE', 'LABEL', 'CLASSIFICATION']
 
   return (
     <div className="flex flex-col h-full">
-      <TabBar tabs={['Interactive Graph','Entity Registry']} active={activeTab} onChange={setActiveTab}
+      <TabBar tabs={['Interactive Graph', 'Entity Registry']} active={activeTab} onChange={setActiveTab}
         className="px-6 bg-surface-raised shrink-0" />
 
       <div className="flex-1 flex flex-col overflow-hidden p-0">
         {/* Toolbar */}
-        <div className="px-6 py-3 border-b border-surface-border flex items-center gap-4 shrink-0 bg-surface-raised/50">
-          <label className="flex items-center gap-2 text-xs text-sentinel-300 cursor-pointer hover:text-sentinel-100 select-none">
-            <button onClick={() => setHighRiskOnly(!highRiskOnly)} className="text-sentinel-400 hover:text-sentinel-200">
-              {highRiskOnly ? <CheckSquare className="w-3.5 h-3.5 text-accent-blue" /> : <Square className="w-3.5 h-3.5" />}
-            </button>
-            High Risk Only
-          </label>
-          <label className="flex items-center gap-2 text-xs text-sentinel-300 cursor-pointer hover:text-sentinel-100 select-none">
-            <button onClick={() => setActiveAnomalies(!activeAnomalies)} className="text-sentinel-400 hover:text-sentinel-200">
-              {activeAnomalies ? <CheckSquare className="w-3.5 h-3.5 text-accent-blue" /> : <Square className="w-3.5 h-3.5" />}
-            </button>
-            Active Anomalies
-          </label>
-          <div className="ml-auto">
-            <button className="px-3 py-1.5 text-xs text-sentinel-300 border border-surface-border rounded-lg hover:bg-surface-hover transition-colors">
-              Filter
-            </button>
+        <div className="px-6 py-3 border-b border-surface-border flex items-center gap-3 shrink-0 bg-surface-raised/50">
+          <div className="flex items-center gap-2 bg-surface-raised border border-surface-border rounded-lg px-3 py-1.5 w-72">
+            <Search className="w-3.5 h-3.5 text-sentinel-400 shrink-0" />
+            <input
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              placeholder="Search entities…"
+              className="flex-1 bg-transparent text-xs text-sentinel-100 placeholder-sentinel-500 focus:outline-none"
+            />
           </div>
+          <select
+            value={typeFilter}
+            onChange={e => setTypeFilter(e.target.value as EntityType | 'all')}
+            className="bg-surface-raised border border-surface-border rounded-lg px-3 py-1.5 text-xs text-sentinel-200 focus:outline-none focus:border-accent-blue/40"
+          >
+            {ENTITY_TYPES.map(t => (
+              <option key={t} value={t}>{t === 'all' ? 'All types' : t[0].toUpperCase() + t.slice(1)}</option>
+            ))}
+          </select>
+          <span className="ml-auto text-[11px] text-sentinel-400 font-mono">{total} records</span>
         </div>
 
         {/* Table header */}
         <div className="grid gap-0 border-b border-surface-border bg-surface-raised/30 shrink-0"
-          style={{ gridTemplateColumns: '40px 180px 160px 140px 160px 120px 100px' }}>
+          style={{ gridTemplateColumns: '40px 260px 140px 1fr 180px 28px' }}>
           <div className="px-4 py-2.5" />
           {COLS.map(c => (
             <div key={c} className="px-3 py-2.5">
               <span className="section-label">{c}</span>
             </div>
           ))}
+          <div />
         </div>
 
         {/* Rows */}
         <div className="flex-1 overflow-y-auto">
-          {filtered.map(n => {
-            const Icon = typeIconMap[n.type] ?? Cpu
+          {loading && <div className="p-6 text-xs text-sentinel-500 animate-pulse">Loading registry…</div>}
+          {error && (
+            <div className="flex flex-col items-center gap-2 py-12 text-sentinel-500">
+              <p className="text-xs text-severity-critical">Failed to load entities</p>
+              <button onClick={refetch} className="text-xs font-medium text-accent-blue hover:text-blue-400">Retry</button>
+            </div>
+          )}
+          {!loading && !error && entities.length === 0 && (
+            <div className="py-12 text-center text-xs text-sentinel-500">No entities match the current filter.</div>
+          )}
+          {entities.map(e => {
+            const Icon = typeIconMap[e.type] ?? Cpu
             return (
-              <div key={n.id}
+              <div key={e.id}
                 className="grid items-center border-b border-surface-border hover:bg-surface-hover transition-colors cursor-pointer group"
-                style={{ gridTemplateColumns: '40px 180px 160px 140px 160px 120px 100px' }}>
+                style={{ gridTemplateColumns: '40px 260px 140px 1fr 180px 28px' }}
+                onClick={() => navigate('/network')}>
                 <div className="px-4 py-3 flex items-center">
-                  <Square className="w-3.5 h-3.5 text-sentinel-600 group-hover:text-sentinel-400 transition-colors" />
+                  <span className={`w-8 h-8 rounded border flex items-center justify-center ${typeColors[e.type] ?? typeColors.unknown}`}>
+                    <Icon className="w-3.5 h-3.5" />
+                  </span>
                 </div>
                 <div className="px-3 py-3">
-                  <span className="font-mono text-[11px] text-sentinel-100">{n.id}</span>
-                </div>
-                <div className="px-3 py-3 flex items-center gap-2">
-                  <Icon className="w-3.5 h-3.5 text-sentinel-400 shrink-0" />
-                  <span className="text-xs text-sentinel-200 capitalize">{n.type}</span>
+                  <span className="font-mono text-[11px] text-sentinel-100">{e.id}</span>
                 </div>
                 <div className="px-3 py-3">
-                  <span className="font-mono text-[11px] text-sentinel-200">{n.connections.toLocaleString()}</span>
+                  <span className="text-xs text-sentinel-200 capitalize">{e.type}</span>
                 </div>
                 <div className="px-3 py-3">
-                  <TrafficBar value={n.trafficVol24h} max={50} unit={n.trafficUnit} />
+                  <span className="text-xs font-medium text-sentinel-100 truncate">{e.label}</span>
                 </div>
                 <div className="px-3 py-3">
-                  <RiskScoreBadge score={n.riskScore} />
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-sm border text-[9px] font-semibold tracking-wider ${classificationPill[e.classification] ?? ''}`}>
+                    {classificationLabel[e.classification] ?? e.classification}
+                  </span>
                 </div>
-                <div className="px-3 py-3">
-                  <span className="font-mono text-[11px] text-sentinel-400">{n.lastSignal}</span>
+                <div className="px-3 py-3 flex justify-end">
+                  <ChevronRight className="w-3.5 h-3.5 text-sentinel-600 group-hover:text-sentinel-300 transition-colors" />
                 </div>
               </div>
             )
           })}
-
-          {/* Hidden records hint */}
-          <div className="py-4 text-center">
-            <span className="font-mono text-[11px] text-sentinel-500">[ {Math.max(0, 208 - filtered.length)} more records hidden ]</span>
-          </div>
         </div>
 
         {/* Pagination */}
         <div className="px-6 py-3 border-t border-surface-border shrink-0 bg-surface-raised/50">
-          <Pagination total={208} page={page} perPage={4} onPageChange={setPage} />
+          <Pagination total={total} page={page} perPage={10} onPageChange={setPage} />
         </div>
       </div>
     </div>

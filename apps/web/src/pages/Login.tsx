@@ -1,9 +1,8 @@
 import { useState, type FormEvent } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { Shield, Eye, EyeOff, Lock, User, AlertTriangle, ChevronRight, Activity } from 'lucide-react'
+import { Shield, Eye, EyeOff, Lock, User, AlertTriangle, ChevronRight, Activity, ShieldAlert } from 'lucide-react'
+import { ApiError } from '../services/client'
 import { useAuth } from '../context/AuthContext'
-
-const CLEARANCE_LABELS = ['', 'Basic', 'Restricted', 'Operational', 'Strategic', 'Command']
 
 // Decorative Background Pattern for left panel
 function BackgroundPattern() {
@@ -24,6 +23,18 @@ function BackgroundPattern() {
   )
 }
 
+// Authorized-only notice above the form
+function AccessWarning() {
+  return (
+    <div className="flex items-start gap-2 p-3 mb-6 bg-severity-tint-info border border-severity-info/20 rounded-md">
+      <ShieldAlert className="w-4 h-4 text-severity-info shrink-0 mt-0.5" />
+      <p className="text-[11px] text-text-secondary leading-relaxed">
+        Authorized law-enforcement personnel only. All login attempts are logged and audited.
+      </p>
+    </div>
+  )
+}
+
 export default function Login() {
   const navigate = useNavigate()
   const { login } = useAuth()
@@ -31,7 +42,6 @@ export default function Login() {
   const [username, setUsername]         = useState('')
   const [password, setPassword]         = useState('')
   const [showPassword, setShowPassword] = useState(false)
-  const [clearanceLevel, setClearance]  = useState(3)
   const [loading, setLoading]           = useState(false)
   const [error, setError]               = useState('')
 
@@ -40,12 +50,17 @@ export default function Login() {
     if (!username || !password) { setError('Enter credentials to proceed.'); return }
     setLoading(true)
     setError('')
-    const ok = await login(username, password)
-    setLoading(false)
-    if (ok) {
-      navigate('/login/mfa')
-    } else {
-      setError('Invalid credentials. Verify your Operator ID and passphrase.')
+    try {
+      const outcome = await login(username, password)
+      if (outcome === 'mfa_required') {
+        navigate('/login/mfa')
+      } else {
+        navigate('/cases', { replace: true })
+      }
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Unable to reach the API server.')
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -54,7 +69,7 @@ export default function Login() {
       {/* Left Panel: Brand / Identity (40%) */}
       <div className="hidden lg:flex w-[40%] relative flex-col justify-between p-12 bg-gradient-to-b from-[#0F1E33] to-bg-canvas border-r border-border-default overflow-hidden">
         <BackgroundPattern />
-        
+
         {/* Top Logo */}
         <div className="relative z-10 flex items-center gap-3">
           <div className="w-12 h-12 rounded-xl bg-brand-500/10 border border-brand-500/30 flex items-center justify-center shadow-lg shadow-brand-500/10">
@@ -92,9 +107,11 @@ export default function Login() {
             </div>
             <h2 className="text-2xl font-bold text-text-primary mb-1">Sign in</h2>
             <p className="text-sm text-text-secondary">
-              Don't have an account? <Link to="/register" className="text-brand-500 hover:text-brand-400 font-medium transition-colors">Register here</Link>
+              Use your operator ID and passphrase. <Link to="/login" className="text-brand-500 hover:text-brand-400 font-medium transition-colors">Contact your unit admin</Link> if locked out.
             </p>
           </div>
+
+          <AccessWarning />
 
           <form onSubmit={handleSubmit} className="space-y-5">
             {/* Operator ID */}
@@ -108,7 +125,7 @@ export default function Login() {
                   type="text"
                   value={username}
                   onChange={e => setUsername(e.target.value)}
-                  placeholder="op.chen"
+                  placeholder="admin"
                   autoComplete="username"
                   className="w-full h-9 pl-9 pr-4 bg-bg-surface-2 border border-border-default rounded-md text-sm text-text-primary placeholder-text-disabled focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500/40 transition-colors"
                 />
@@ -142,29 +159,6 @@ export default function Login() {
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
-              </div>
-            </div>
-
-            {/* Clearance Level */}
-            <div>
-              <label className="block text-[11px] font-semibold text-text-secondary uppercase tracking-wider mb-1.5">
-                Clearance Level
-              </label>
-              <div className="flex gap-2">
-                {[3, 4, 5].map(lvl => (
-                  <button
-                    key={lvl}
-                    type="button"
-                    onClick={() => setClearance(lvl)}
-                    className={`flex-1 h-9 rounded-md text-xs font-medium border transition-colors ${
-                      clearanceLevel === lvl
-                        ? 'bg-brand-500/10 border-brand-500/40 text-brand-500'
-                        : 'bg-bg-surface-2 border-border-default text-text-secondary hover:border-border-strong hover:text-text-primary'
-                    }`}
-                  >
-                    CL-{lvl}
-                  </button>
-                ))}
               </div>
             </div>
 
@@ -204,9 +198,9 @@ export default function Login() {
               </p>
               <div className="grid grid-cols-3 gap-2">
                 {[
-                  { u: 'demo', p: 'demo', cl: 'CL-3' },
-                  { u: 'op.chen', p: 'sentinel', cl: 'CL-4' },
-                  { u: 'admin', p: 'admin', cl: 'CL-5' },
+                  { u: 'admin',   p: 'Password1!', role: 'Administrator' },
+                  { u: 'analyst', p: 'Password1!', role: 'Analyst' },
+                  { u: 'officer', p: 'Password1!', role: 'District Officer' },
                 ].map(c => (
                   <button
                     key={c.u}
@@ -215,7 +209,7 @@ export default function Login() {
                     className="py-2 px-2 rounded bg-bg-surface border border-border-default hover:border-border-strong text-text-secondary hover:text-text-primary transition-colors text-center flex flex-col items-center gap-0.5"
                   >
                     <span className="block font-mono text-xs">{c.u}</span>
-                    <span className="text-[10px] text-text-tertiary">{c.cl}</span>
+                    <span className="text-[10px] text-text-tertiary">{c.role}</span>
                   </button>
                 ))}
               </div>

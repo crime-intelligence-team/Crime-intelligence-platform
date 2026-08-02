@@ -64,9 +64,14 @@ class EntityDetail(EntitySummary):
 class RelationshipOut(BaseModel):
     """Relationship read shape. Confidence + classification come ONLY from the
     Postgres RelationshipEdgeRef mirror row — Neo4j never supplies visibility
-    metadata (decision 000). id = neo4j_relationship_id."""
+    metadata (decision 000). id = neo4j_relationship_id.
+
+    mirror_id is the RelationshipEdgeRef PK (a UUID): the confidence-review
+    console uses it as target_id for target_type=edge (decision 010). Null
+    only in the impossible case of an edge rendered without a mirror row."""
 
     id: str
+    mirror_id: str | None = None
     type: str  # Neo4j relationship type, e.g. "MEMBER_OF"
     source_entity: EntitySummary
     target_entity: EntitySummary

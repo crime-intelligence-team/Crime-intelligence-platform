@@ -1,4 +1,4 @@
-import type { Severity } from '../../types'
+type Severity = 'critical' | 'elevated' | 'low' | 'info'
 
 // ── SeverityBadge ────────────────────────────────────────────────────────────
 const severityConfig: Record<Severity, { label: string; className: string }> = {

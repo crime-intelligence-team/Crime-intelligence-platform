@@ -1,153 +1,222 @@
-import { ProgressBar } from '../components/ui/ProgressBar'
-import { NodeIntegrityBadge } from '../components/ui/Badge'
+import { useState } from 'react'
+import { Plus, X, Loader2, Shield, ShieldAlert } from 'lucide-react'
+import { useApi } from '../hooks/useApi'
+import { useAuth } from '../context/AuthContext'
+import { redactionsApi } from '../services/endpoints'
+import { ApiError } from '../services/client'
 import { Button } from '../components/ui/Button'
-import { Shield, ExternalLink, Filter, Plus, Eye } from 'lucide-react'
-import { securityDirectives, nodeIntegrity } from '../data/governance'
+import { SkeletonRow } from '../components/ui/Skeletons'
+import type { ClassificationLevel, RedactionPolicyResponse } from '@cip/shared-types'
 
-// ── Circular SVG Gauge ────────────────────────────────────────────────────────
-function SecurityGauge({ value }: { value: number }) {
-  const r = 56, cx = 70, cy = 70
-  const circ = 2 * Math.PI * r
-  const dash = (value / 100) * circ
-  return (
-    <div className="flex flex-col items-center">
-      <svg width={140} height={140} viewBox="0 0 140 140">
-        {/* Background ring */}
-        <circle cx={cx} cy={cy} r={r} fill="none" stroke="#1e293b" strokeWidth={10} />
-        {/* Progress arc */}
-        <circle cx={cx} cy={cy} r={r} fill="none"
-          stroke="#22c55e" strokeWidth={10} strokeLinecap="round"
-          strokeDasharray={`${dash} ${circ}`}
-          transform="rotate(-90 70 70)"
-        />
-        {/* Center text */}
-        <text x={cx} y={cy - 8} textAnchor="middle" fontSize={22} fontWeight={700} fill="#f1f5f9" fontFamily="Inter, sans-serif">
-          {value}%
-        </text>
-        <text x={cx} y={cy + 12} textAnchor="middle" fontSize={11} fill="#22c55e" letterSpacing={2} fontFamily="Inter, sans-serif">
-          SECURE
-        </text>
-      </svg>
-    </div>
-  )
+const ENTITY_TYPES = ['note', 'case', 'entity', 'person', 'organization', 'vehicle', 'device', 'address']
+
+const REDACTION_FIELDS: Record<string, string[]> = {
+  note: ['body'],
+  case: ['summary'],
+  entity: ['label'],
+  person: ['aliases', 'date_of_birth'],
+  organization: ['org_type'],
+  vehicle: ['registration_number', 'make', 'model', 'color'],
+  device: ['phone_number', 'imei', 'device_type'],
+  address: ['raw_text'],
 }
 
-// ── Directive card ────────────────────────────────────────────────────────────
-function DirectiveCard({ d }: { d: typeof securityDirectives[0] }) {
-  const pct = d.enforcementProgress
-  const color: 'green' | 'amber' | 'red' = pct >= 90 ? 'green' : pct >= 40 ? 'amber' : 'red'
-  return (
-    <div className="bg-surface-card border border-surface-border rounded-xl p-4 flex flex-col gap-3">
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="font-mono text-[10px] text-sentinel-400">{d.dirCode}</span>
-            <ExternalLink className="w-3 h-3 text-sentinel-600" />
-          </div>
-          <h3 className="text-xs font-semibold text-sentinel-100 leading-snug">{d.title}</h3>
-        </div>
-      </div>
-      <p className="text-[11px] text-sentinel-400 leading-relaxed flex-1">{d.description}</p>
-      <div>
-        <div className="flex justify-between text-[10px] mb-1">
-          <span className="text-sentinel-400">Enforcement Progress</span>
-          <span className={`font-mono font-medium ${color === 'green' ? 'text-accent-emerald' : color === 'amber' ? 'text-accent-amber' : 'text-severity-critical'}`}>{pct}%</span>
-        </div>
-        <ProgressBar value={pct} color={color} showValue={false} height="thin" />
-      </div>
-    </div>
-  )
+const CLASSIFICATIONS: { value: ClassificationLevel; label: string }[] = [
+  { value: 'open_operational', label: 'Open Operational' },
+  { value: 'restricted_operational', label: 'Restricted Operational' },
+  { value: 'protected', label: 'Protected' },
+  { value: 'sealed', label: 'Sealed' },
+]
+
+const classificationPill: Record<string, string> = {
+  open_operational: 'bg-severity-tint-low text-severity-low border-severity-low/30',
+  restricted_operational: 'bg-severity-tint-info text-severity-info border-severity-info/30',
+  protected: 'bg-severity-tint-high text-severity-high border-severity-high/30',
+  sealed: 'bg-severity-tint-critical text-severity-critical border-severity-critical/30',
 }
 
-export default function GovernanceSecurity() {
+// ── Create policy modal ───────────────────────────────────────────────────────
+function CreatePolicyModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const [entityType, setEntityType] = useState('note')
+  const [field, setField] = useState('body')
+  const [minClass, setMinClass] = useState<ClassificationLevel>('protected')
+  const [reason, setReason] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const fields = REDACTION_FIELDS[entityType] ?? []
+
+  const inputCls = 'w-full bg-surface-raised border border-surface-border rounded-lg px-3 py-2 text-sm text-sentinel-100 focus:outline-none focus:border-accent-blue/40 transition-colors'
+  const labelCls = 'block text-[11px] uppercase font-semibold tracking-wider text-sentinel-500 mb-1.5'
+
+  async function handleSubmit() {
+    setSubmitting(true)
+    setError(null)
+    try {
+      await redactionsApi.createPolicy({ entity_type: entityType, field, min_classification: minClass, reason })
+      onCreated()
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Policy creation failed')
+      setSubmitting(false)
+    }
+  }
+
   return (
-    <div className="h-full overflow-y-auto p-6">
-      {/* Header */}
-      <div className="flex items-start justify-between mb-6">
-        <div>
-          <h1 className="text-xl font-bold text-sentinel-50">Governance & Compliance</h1>
-          <p className="text-xs text-sentinel-400 mt-1">National Cyber Security Infrastructure Framework</p>
+    <div className="absolute inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      <div className="w-[460px] bg-surface-raised border border-surface-border rounded-xl shadow-2xl p-6" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-base font-semibold text-sentinel-100">Create Redaction Policy</h2>
+          <button onClick={onClose} className="p-1 rounded text-sentinel-500 hover:text-sentinel-200"><X className="w-4 h-4" /></button>
         </div>
-        <div className="flex items-center gap-4 text-[10px] font-mono text-sentinel-400">
-          <span className="px-2.5 py-1 bg-surface-card border border-surface-border rounded">LAST SYNC: 14:32:01 UTC</span>
-          <span className="px-2.5 py-1 bg-surface-card border border-surface-border rounded">NODE REGION: GLOBAL_ALPHA</span>
-        </div>
-      </div>
-
-      {/* Main 2-panel row */}
-      <div className="grid grid-cols-5 gap-4 mb-4">
-        {/* Security Posture (2/5) */}
-        <div className="col-span-2 bg-surface-card border border-surface-border rounded-xl p-5 flex flex-col gap-4">
-          <div className="flex items-center gap-2">
-            <Shield className="w-4 h-4 text-sentinel-400" />
-            <h2 className="text-sm font-semibold text-sentinel-100">Security Posture</h2>
-          </div>
-          <SecurityGauge value={88} />
-          <div className="space-y-3">
-            <ProgressBar value={98} color="green" label="Core Infrastructure"    />
-            <ProgressBar value={76} color="amber" label="Endpoint Compliance"    />
-          </div>
-        </div>
-
-        {/* Node Integrity Matrix (3/5) */}
-        <div className="col-span-3 bg-surface-card border border-surface-border rounded-xl p-5 flex flex-col gap-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-sentinel-100 flex items-center gap-2">
-              <Eye className="w-4 h-4 text-sentinel-400" /> Node Integrity Matrix
-            </h2>
-            <Button variant="secondary" size="sm"><Eye className="w-3.5 h-3.5" /> VIEW TOPOLOGY</Button>
-          </div>
-
-          {/* Quick stats row */}
-          <div className="grid grid-cols-4 gap-2">
-            {[
-              { label: 'GLOBAL UPTIME',     value: '99.97%'  },
-              { label: 'ACTIVE NODES',       value: '1,247'   },
-              { label: 'DATA STORES SYNCED', value: '98/100'  },
-              { label: 'ANOMALIES DETECTED', value: '3', highlight: true },
-            ].map(s => (
-              <div key={s.label}
-                className={`rounded-lg p-2.5 border text-center ${s.highlight ? 'bg-severity-critical/10 border-severity-critical/30' : 'bg-surface-raised border-surface-border'}`}>
-                <p className="section-label mb-1">{s.label}</p>
-                <p className={`text-lg font-bold font-mono ${s.highlight ? 'text-severity-critical' : 'text-sentinel-50'}`}>{s.value}</p>
-              </div>
-            ))}
-          </div>
-
-          {/* Node table */}
-          <div className="rounded-lg overflow-hidden border border-surface-border">
-            <div className="grid bg-surface-raised/50 border-b border-surface-border"
-              style={{ gridTemplateColumns: '1fr 1fr 1.5fr 1fr' }}>
-              {['NODE_ID','DESCRIPTION','TYPE','STATUS'].map(h => (
-                <div key={h} className="px-3 py-2 section-label">{h}</div>
-              ))}
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className={labelCls}>Entity Type</label>
+              <select value={entityType} onChange={e => { setEntityType(e.target.value); setField(REDACTION_FIELDS[e.target.value]?.[0] ?? '') }} className={inputCls}>
+                {ENTITY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
             </div>
-            {nodeIntegrity.map(n => (
-              <div key={n.nodeId} className="grid items-center border-b border-surface-border last:border-0 hover:bg-surface-hover transition-colors"
-                style={{ gridTemplateColumns: '1fr 1fr 1.5fr 1fr' }}>
-                <div className="px-3 py-2.5 font-mono text-[11px] text-sentinel-100">{n.nodeId}</div>
-                <div className="px-3 py-2.5 font-mono text-[11px] text-sentinel-300">{n.description}</div>
-                <div className="px-3 py-2.5 font-mono text-[11px] text-sentinel-300 capitalize">{n.type}</div>
-                <div className="px-3 py-2.5"><NodeIntegrityBadge status={n.status} /></div>
+            <div>
+              <label className={labelCls}>Field</label>
+              <select value={field} onChange={e => setField(e.target.value)} className={inputCls}>
+                {fields.map(f => <option key={f} value={f}>{f}</option>)}
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className={labelCls}>Minimum Classification</label>
+            <select value={minClass} onChange={e => setMinClass(e.target.value as ClassificationLevel)} className={inputCls}>
+              {CLASSIFICATIONS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+            </select>
+            <p className="text-[10px] text-sentinel-500 mt-1">Fires when the target record's classification is at or above this tier.</p>
+          </div>
+          <div>
+            <label className={labelCls}>Reason</label>
+            <textarea value={reason} onChange={e => setReason(e.target.value)} rows={3} placeholder="Why this field must be redacted on export"
+              className={`${inputCls} resize-none`} />
+          </div>
+          {error && <p className="text-xs text-severity-critical bg-severity-critical/10 border border-severity-critical/30 rounded-md px-3 py-2">{error}</p>}
+          <div className="flex justify-end gap-2 pt-2">
+            <Button onClick={onClose}>Cancel</Button>
+            <Button variant="primary" onClick={handleSubmit} disabled={submitting || !reason.trim()}>
+              {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Create Policy'}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Page ──────────────────────────────────────────────────────────────────────
+export default function GovernanceSecurity() {
+  const { hasPermission } = useAuth()
+  const canManage = hasPermission('redaction:manage')
+
+  const { data: page, loading, error, refetch } = useApi(() => redactionsApi.policies())
+  const policies = page?.items ?? []
+
+  const [showCreate, setShowCreate] = useState(false)
+  const [busyId, setBusyId] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+
+  async function handleDeactivate(p: RedactionPolicyResponse) {
+    setBusyId(p.id)
+    setActionError(null)
+    try {
+      await redactionsApi.deactivatePolicy(p.id)
+      refetch()
+    } catch (e) {
+      setActionError(e instanceof ApiError ? e.message : 'Deactivation failed')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  if (!canManage) {
+    return (
+      <div className="h-full flex items-center justify-center bg-surface-base">
+        <div className="max-w-sm text-center p-8 bg-surface-card border border-surface-border rounded-xl">
+          <ShieldAlert className="w-6 h-6 text-accent-amber mx-auto mb-3" />
+          <p className="text-sm font-semibold text-sentinel-100">Administrator Only</p>
+          <p className="text-xs text-sentinel-400 mt-1.5 leading-relaxed">
+            Redaction policy management requires the redaction:manage permission (administrator clearance).
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="relative h-full overflow-y-auto bg-surface-base">
+      <div className="max-w-[1200px] mx-auto px-6 py-6">
+        {/* Header */}
+        <div className="flex items-start justify-between mb-6">
+          <div>
+            <h1 className="text-xl font-bold text-sentinel-50 flex items-center gap-2">
+              <Shield className="w-4 h-4 text-accent-blue" /> Redaction Policies
+            </h1>
+            <p className="text-xs text-sentinel-400 mt-0.5">Export-time redaction rules applied to shared case and entity data</p>
+          </div>
+          <button
+            onClick={() => setShowCreate(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-accent-blue text-white rounded-lg text-xs font-semibold hover:bg-accent-blue/90 transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5" /> Create Policy
+          </button>
+        </div>
+
+        {actionError && (
+          <div className="mb-4 text-xs text-severity-critical bg-severity-critical/10 border border-severity-critical/30 rounded-lg px-4 py-2.5">{actionError}</div>
+        )}
+
+        {/* Table */}
+        <div className="bg-surface-card border border-surface-border rounded-xl overflow-hidden">
+          <div className="grid px-4 py-2.5 border-b border-surface-border text-[10px] font-semibold tracking-widest text-sentinel-500 uppercase"
+            style={{ gridTemplateColumns: '200px 120px 160px 1fr 90px 110px' }}>
+            <span>Target</span><span>Decision</span><span>Min Classification</span><span>Reason</span><span>Status</span><span className="text-right">Actions</span>
+          </div>
+
+          <div className="divide-y divide-surface-border">
+            {loading && Array.from({ length: 4 }).map((_, i) => <SkeletonRow key={i} />)}
+            {!loading && error && (
+              <div className="px-4 py-10 text-center text-xs text-severity-critical">Failed to load policies: {error}</div>
+            )}
+            {!loading && !error && policies.length === 0 && (
+              <div className="px-4 py-10 text-center text-xs text-sentinel-500">No redaction policies defined yet.</div>
+            )}
+            {policies.map(p => (
+              <div key={p.id} className="grid px-4 py-3 items-center hover:bg-surface-hover/50 transition-colors"
+                style={{ gridTemplateColumns: '200px 120px 160px 1fr 90px 110px' }}>
+                <span className="font-mono text-[11px] text-sentinel-100">{p.entity_type}.{p.field}</span>
+                <span className="text-xs text-sentinel-300 uppercase">{p.decision}</span>
+                <span className={`inline-flex w-fit items-center px-2 py-0.5 rounded-sm border text-[9px] font-semibold tracking-wider ${classificationPill[p.min_classification] ?? ''}`}>
+                  {p.min_classification.replace(/_/g, ' ').toUpperCase()}
+                </span>
+                <span className="text-xs text-sentinel-300 truncate pr-2" title={p.reason}>{p.reason}</span>
+                <span className={`text-[10px] font-bold tracking-wider ${p.active ? 'text-severity-low' : 'text-sentinel-500'}`}>
+                  {p.active ? 'ACTIVE' : 'INACTIVE'}
+                </span>
+                <div className="flex justify-end">
+                  {p.active ? (
+                    <button
+                      onClick={() => handleDeactivate(p)}
+                      disabled={busyId === p.id}
+                      className="px-2.5 py-1.5 rounded text-[10px] font-semibold text-severity-critical bg-severity-tint-critical border border-severity-critical/30 hover:bg-severity-critical/20 transition-colors disabled:opacity-50"
+                    >
+                      {busyId === p.id ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Deactivate'}
+                    </button>
+                  ) : (
+                    <span className="text-[10px] text-sentinel-600">—</span>
+                  )}
+                </div>
               </div>
             ))}
           </div>
         </div>
       </div>
 
-      {/* Active Directives */}
-      <div className="bg-surface-card border border-surface-border rounded-xl p-5">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-sm font-semibold text-sentinel-100">Active Security Directives</h2>
-          <div className="flex items-center gap-2">
-            <Button variant="secondary" size="sm"><Filter className="w-3.5 h-3.5" /> FILTER</Button>
-            <Button variant="primary" size="sm"><Plus className="w-3.5 h-3.5" /> ISSUE DIRECTIVE</Button>
-          </div>
-        </div>
-        <div className="grid grid-cols-3 gap-3">
-          {securityDirectives.map(d => <DirectiveCard key={d.id} d={d} />)}
-        </div>
-      </div>
+      {showCreate && <CreatePolicyModal onClose={() => setShowCreate(false)} onCreated={() => { setShowCreate(false); refetch() }} />}
     </div>
   )
 }

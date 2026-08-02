@@ -1,7 +1,36 @@
 import { Filter, Plus, Key, AlertTriangle, Shield } from 'lucide-react'
 import { Button } from '../components/ui/Button'
 import { ProgressBar } from '../components/ui/ProgressBar'
-import { policyDirectives, clearanceLevels } from '../data/governance'
+
+type PolicyDirective = {
+  id: string; dirCode: string; icon: 'key' | 'warning' | 'shield'
+  name: string; description: string; status: 'enforced' | 'alert' | 'pending'
+  enabled: boolean; tags: string[]; enforcementProgress: number
+}
+type ClearanceLevelItem = {
+  code: string; name: string; level: number; activeCount: number; description: string
+}
+
+const policyDirectives: PolicyDirective[] = [
+  {
+    id:'1', dirCode:'DIR-2023-09A', icon:'key',
+    name:'Global Multi-Factor Mandate (Tier 1-3)',
+    description:'Requires hardware token authentication for all intra-network access originating outside designated safe zones.',
+    status:'enforced', enabled:true, tags:['Access: T1-T3','Impact: High'], enforcementProgress:100,
+  },
+  {
+    id:'2', dirCode:'DIR-2023-11C', icon:'warning',
+    name:'Telemetry Retention Override - Sector 7',
+    description:'Forces 90-day retention of all raw packet data in Sector 7 due to ongoing anomalous traffic analysis.',
+    status:'alert', enabled:true, tags:['Region: S7','Compliance Risk'], enforcementProgress:62,
+  },
+]
+
+const clearanceLevels: ClearanceLevelItem[] = [
+  { code:'CL-5', name: 'Command Level', level: 5, activeCount:12, description: 'Full system authority, override capability, and global directive issuance.' },
+  { code:'CL-4', name: 'Strategic', level: 4, activeCount:84, description: 'Regional command, intelligence routing, and protocol management.' },
+  { code:'CL-3', name: 'Operational', level: 3, activeCount:412, description: 'Standard analyst clearance. Read access to case files and telemetry.' },
+]
 
 const policyStatusColors: Record<string, string> = {
   enforced: 'bg-accent-emerald/10 text-accent-emerald border-accent-emerald/30',

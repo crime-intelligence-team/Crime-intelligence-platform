@@ -28,6 +28,7 @@ import GovernanceAudit      from './pages/GovernanceAudit'
 import GovernanceProtocols  from './pages/GovernanceProtocols'
 import GovernanceDirectives from './pages/GovernanceDirectives'
 import GovernanceAccess     from './pages/GovernanceAccess'
+import EntityResolution     from './pages/EntityResolution'
 
 export default function App() {
   return (
@@ -67,6 +68,7 @@ export default function App() {
           <Route path="/governance/protocols"   element={<GovernanceProtocols />} />
           <Route path="/governance/directives"  element={<GovernanceDirectives />} />
           <Route path="/governance/access"      element={<GovernanceAccess />} />
+          <Route path="/governance/resolution"  element={<EntityResolution />} />
 
           {/* Catch-all */}
           <Route path="*" element={<Navigate to="/cases" replace />} />

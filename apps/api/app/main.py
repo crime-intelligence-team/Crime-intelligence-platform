@@ -15,6 +15,7 @@ from app.routers import (
     map as map_router,
     network,
     redactions,
+    search,
 )
 
 app = FastAPI(
@@ -56,6 +57,7 @@ app.include_router(redactions.router)
 app.include_router(access_exceptions.router)
 app.include_router(entity_resolution.router)
 app.include_router(admin.router)
+app.include_router(search.router)
 
 
 @app.get("/health")

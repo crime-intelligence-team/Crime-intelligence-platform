@@ -66,6 +66,31 @@ All officer passwords are `Password1!` (admin/ADM-0001, analyst/ANL-0001,
 officer/DTO-0001, supervisor/SUP-0001, detective/DET-0001). Login field is
 `username_or_official_id` (username works).
 
+## Testing
+
+The backend test suite has two layers (`apps/api/tests`, see
+`docs/testing.md`):
+
+- **Unit tests** (`tests/unit`) — pure domain logic (permission matrix,
+  classification/score bands, redaction vocabulary, risk interpretation,
+  case-number format). No database required:
+  ```bash
+  cd apps/api
+  python -m pytest tests/unit
+  ```
+- **Integration tests** (`tests/integration`) — API-level auth, global
+  search, and audit-log gating against a live Postgres. They self-provision
+  their officers (no seed dependency) and **skip automatically** when the
+  database is unreachable:
+  ```bash
+  cd apps/api && alembic upgrade head   # needs Postgres up first
+  python -m pytest
+  ```
+
+CI (`.github/workflows/ci.yml`) runs the full backend suite against
+Postgres + Neo4j services and typechecks/builds the frontend
+(`apps/web`: `npx tsc -b && npm run build`).
+
 ## Smoke test (one request per phase)
 
 ```bash
@@ -78,6 +103,8 @@ curl 'http://localhost:8000/api/v1/entities/search?q=Phase4' -H "Authorization: 
 curl -X POST http://localhost:8000/api/v1/cases -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"case_number":"CASE-2026-9001","title":"smoke","district_id":"<EAST_DISTRICT_ID>"}'            # Phase 5
+curl 'http://localhost:8000/api/v1/search?q=Smuggling' -H "Authorization: Bearer $TOKEN"                # Phase 5 (global search)
+curl http://localhost:8000/api/v1/admin/audit -H "Authorization: Bearer $TOKEN"                         # Phase 5 (audit log, supervisor+)
 # Phase 6: access exceptions (request + step-up approve), entity merge, confidence review
 ```
 

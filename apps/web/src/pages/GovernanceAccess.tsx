@@ -1,194 +1,241 @@
 import { useState } from 'react'
-import { Users, Shield, Lock, Activity, Search, Filter, Plus, Eye, Ban, ChevronDown } from 'lucide-react'
+import { Plus, X, ShieldCheck, Check, Ban, Undo2, Loader2, FileClock } from 'lucide-react'
 import { useApi } from '../hooks/useApi'
-import { governanceApi } from '../services/api'
+import { useAuth } from '../context/AuthContext'
+import { accessExceptionsApi } from '../services/endpoints'
+import { ApiError } from '../services/client'
+import { Button } from '../components/ui/Button'
+import { StepUpModal } from '../components/ui/StepUpModal'
 import { SkeletonRow } from '../components/ui/Skeletons'
-import { Pagination } from '../components/ui/Pagination'
+import type { AccessExceptionRequestResponse } from '@cip/shared-types'
 
-const CLEARANCE_COLORS: Record<number, string> = {
-  5: 'bg-severity-critical/15 border-severity-critical/40 text-severity-critical',
-  4: 'bg-accent-amber/15 border-accent-amber/40 text-accent-amber',
-  3: 'bg-accent-blue/15 border-accent-blue/40 text-accent-blue',
-  2: 'bg-surface-hover border-surface-border text-sentinel-300',
-  1: 'bg-surface-card border-surface-border text-sentinel-400',
+const statusMeta: Record<string, { label: string; cls: string }> = {
+  pending:  { label: 'PENDING',  cls: 'bg-accent-amber/15 border-accent-amber/40 text-accent-amber' },
+  approved: { label: 'APPROVED', cls: 'bg-severity-tint-low border-severity-low/40 text-severity-low' },
+  denied:   { label: 'DENIED',   cls: 'bg-severity-tint-critical border-severity-critical/40 text-severity-critical' },
+  revoked:  { label: 'REVOKED',  cls: 'bg-surface-hover border-surface-border text-sentinel-400' },
 }
 
-const TIER_NAMES = ['', 'Observer', 'Analyst', 'Operational', 'Strategic', 'Command']
-
-// Mock active sessions (local mock only — not in governance API yet)
-const ACTIVE_SESSIONS = [
-  { id: 'sess-001', operatorId: 'OP-774A', name: 'K. Chen', ip: '10.42.1.92', started: '11:24 UTC', region: 'BLR-DC', clearance: 4 },
-  { id: 'sess-002', operatorId: 'SYS-AUTO', name: 'Automation Engine', ip: '10.0.0.1', started: '09:00 UTC', region: 'GLOBAL', clearance: 5 },
-  { id: 'sess-003', operatorId: 'OP-219C', name: 'M. Rao', ip: '10.42.3.11', started: '12:05 UTC', region: 'MYS-OPS', clearance: 3 },
-  { id: 'sess-004', operatorId: 'OP-441B', name: 'S. Kumar', ip: '10.42.2.57', started: '13:18 UTC', region: 'HBL-FWD', clearance: 3 },
-]
-
-// Permission toggle block
-function PermissionToggle({ label, enabled }: { label: string; enabled: boolean }) {
-  const [on, setOn] = useState(enabled)
+function StatusBadge({ r }: { r: AccessExceptionRequestResponse }) {
+  const m = statusMeta[r.status] ?? statusMeta.pending
   return (
-    <div className="flex items-center justify-between py-2.5 border-b border-surface-border last:border-0">
-      <span className="text-xs text-sentinel-300">{label}</span>
-      <button onClick={() => setOn(v => !v)}
-        className={`relative w-10 h-5 rounded-full border transition-colors ${on ? 'bg-accent-blue/20 border-accent-blue/50' : 'bg-surface-hover border-surface-border'}`}>
-        <span className={`absolute top-0.5 w-4 h-4 rounded-full transition-all ${on ? 'left-5 bg-accent-blue' : 'left-0.5 bg-sentinel-500'}`} />
-      </button>
+    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm border text-[10px] font-bold tracking-wider ${m.cls}`}>
+      {r.effective && <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />}
+      {m.label}
+    </span>
+  )
+}
+
+// ── Create request modal ──────────────────────────────────────────────────────
+function CreateRequestModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const [caseRef, setCaseRef] = useState('')
+  const [reason, setReason] = useState('')
+  const [hours, setHours] = useState('24')
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const inputCls = 'w-full bg-surface-raised border border-surface-border rounded-lg px-3 py-2 text-sm text-sentinel-100 placeholder-sentinel-500 focus:outline-none focus:border-accent-blue/40 transition-colors'
+  const labelCls = 'block text-[11px] uppercase font-semibold tracking-wider text-sentinel-500 mb-1.5'
+
+  async function handleSubmit() {
+    setSubmitting(true)
+    setError(null)
+    try {
+      await accessExceptionsApi.create({ case_reference: caseRef, operational_reason: reason, requested_duration_hours: hours })
+      onCreated()
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Request failed')
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="absolute inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      <div className="w-[440px] bg-surface-raised border border-surface-border rounded-xl shadow-2xl p-6" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-base font-semibold text-sentinel-100 flex items-center gap-2">
+            <FileClock className="w-4 h-4 text-accent-blue" /> Request Access Exception
+          </h2>
+          <button onClick={onClose} className="p-1 rounded text-sentinel-500 hover:text-sentinel-200"><X className="w-4 h-4" /></button>
+        </div>
+        <div className="space-y-4">
+          <div>
+            <label className={labelCls}>Case Reference</label>
+            <input value={caseRef} onChange={e => setCaseRef(e.target.value)} placeholder="e.g. CASE-2026-0001" className={inputCls} />
+          </div>
+          <div>
+            <label className={labelCls}>Operational Reason</label>
+            <textarea value={reason} onChange={e => setReason(e.target.value)} rows={3} placeholder="Why this exception is operationally necessary"
+              className={`${inputCls} resize-none`} />
+          </div>
+          <div>
+            <label className={labelCls}>Requested Duration (hours)</label>
+            <input type="number" min={1} max={8760} value={hours} onChange={e => setHours(e.target.value)} className={inputCls} />
+            <p className="text-[10px] text-sentinel-500 mt-1">1–8760 hours; approval is time-boxed.</p>
+          </div>
+          {error && <p className="text-xs text-severity-critical bg-severity-critical/10 border border-severity-critical/30 rounded-md px-3 py-2">{error}</p>}
+          <div className="flex justify-end gap-2 pt-2">
+            <Button onClick={onClose}>Cancel</Button>
+            <Button variant="primary" onClick={handleSubmit} disabled={submitting || !caseRef.trim() || !reason.trim()}>
+              {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Submit Request'}
+            </Button>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
 
+// ── Page ──────────────────────────────────────────────────────────────────────
 export default function GovernanceAccess() {
-  const [search, setSearch]     = useState('')
-  const [page, setPage]         = useState(1)
-  const [expanded, setExpanded] = useState<string | null>(null)
-  const { data: levels, loading } = useApi(governanceApi.clearanceLevels)
+  const { hasPermission } = useAuth()
+  const canApprove = hasPermission('exception:approve')
 
-  const filteredSessions = ACTIVE_SESSIONS.filter(s =>
-    s.operatorId.toLowerCase().includes(search.toLowerCase()) ||
-    s.name.toLowerCase().includes(search.toLowerCase())
-  )
+  const { data: requests, loading, error, refetch } = useApi(() => accessExceptionsApi.list())
+  const all = requests ?? []
+
+  const [showCreate, setShowCreate] = useState(false)
+  const [approveTarget, setApproveTarget] = useState<AccessExceptionRequestResponse | null>(null)
+  const [busyId, setBusyId] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+
+  const pending = all.filter(r => r.status === 'pending').length
+  const effective = all.filter(r => r.effective).length
+  const denied = all.filter(r => r.status === 'denied').length
+
+  async function runTransition(id: string, fn: (id: string) => Promise<unknown>) {
+    setBusyId(id)
+    setActionError(null)
+    try {
+      await fn(id)
+      refetch()
+    } catch (e) {
+      setActionError(e instanceof ApiError ? e.message : 'Action failed')
+    } finally {
+      setBusyId(null)
+    }
+  }
 
   return (
-    <div className="h-full overflow-y-auto bg-surface-base">
+    <div className="relative h-full overflow-y-auto bg-surface-base">
       <div className="max-w-[1200px] mx-auto px-6 py-6">
-
         {/* Header */}
         <div className="flex items-start justify-between mb-6">
           <div>
-            <h1 className="text-xl font-bold text-sentinel-50">Access Control</h1>
-            <p className="text-xs text-sentinel-400 mt-0.5">Operator clearance tiers, active sessions, and permission management</p>
+            <h1 className="text-xl font-bold text-sentinel-50">Access Exceptions</h1>
+            <p className="text-xs text-sentinel-400 mt-0.5">Temporary access requests and approvals for time-boxed case access</p>
           </div>
-          <div className="flex gap-2">
-            <button className="flex items-center gap-2 px-4 py-2 bg-surface-card border border-surface-border text-sentinel-300 rounded-lg text-xs font-semibold hover:bg-surface-hover transition-colors">
-              <Filter className="w-3.5 h-3.5" /> Filter
-            </button>
-            <button className="flex items-center gap-2 px-4 py-2 bg-accent-blue text-white rounded-lg text-xs font-semibold hover:bg-accent-blue/90 transition-colors">
-              <Plus className="w-3.5 h-3.5" /> Add Operator
-            </button>
-          </div>
+          <button
+            onClick={() => setShowCreate(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-accent-blue text-white rounded-lg text-xs font-semibold hover:bg-accent-blue/90 transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5" /> Request Exception
+          </button>
         </div>
 
         {/* Stats row */}
         <div className="grid grid-cols-4 gap-3 mb-6">
           {[
-            { icon: Users,  label: 'Total Operators', value: '508', sub: '+3 this week' },
-            { icon: Activity, label: 'Active Sessions',  value: ACTIVE_SESSIONS.length.toString(), sub: 'Currently online' },
-            { icon: Shield, label: 'CL-5 Command',      value: '12',  sub: 'Full authority' },
-            { icon: Lock,   label: 'Locked Accounts',   value: '2',   sub: 'Pending review' },
+            { label: 'Total Requests', value: all.length, cls: 'text-sentinel-50' },
+            { label: 'Pending Review', value: pending, cls: 'text-accent-amber' },
+            { label: 'Currently Effective', value: effective, cls: 'text-severity-low' },
+            { label: 'Denied', value: denied, cls: 'text-severity-critical' },
           ].map(s => (
             <div key={s.label} className="bg-surface-card border border-surface-border rounded-xl p-4">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-[10px] font-semibold tracking-widest text-sentinel-500 uppercase">{s.label}</span>
-                <s.icon className="w-4 h-4 text-sentinel-600" />
-              </div>
-              <p className="text-2xl font-bold text-sentinel-50">{s.value}</p>
-              <p className="text-[10px] text-sentinel-500 mt-0.5">{s.sub}</p>
+              <p className="text-[10px] font-semibold tracking-widest text-sentinel-500 uppercase mb-2">{s.label}</p>
+              <p className={`text-2xl font-bold ${s.cls}`}>{s.value}</p>
             </div>
           ))}
         </div>
 
-        <div className="grid grid-cols-3 gap-4">
-          {/* Left — Clearance Architecture */}
-          <div className="col-span-1">
-            <div className="bg-surface-card border border-surface-border rounded-xl overflow-hidden">
-              <div className="px-4 py-3 border-b border-surface-border flex items-center justify-between">
-                <h2 className="text-sm font-semibold text-sentinel-100">Clearance Architecture</h2>
-                <button className="text-[10px] text-accent-blue hover:underline">Manage Hierarchy</button>
-              </div>
-              {loading ? (
-                <div className="p-4 space-y-2">{Array.from({length:5}).map((_,i)=><SkeletonRow key={i} cols={2} />)}</div>
-              ) : (
-                <div>
-                  {(levels ?? []).map(cl => (
-                    <div key={cl.code}>
-                      <div
-                        onClick={() => setExpanded(expanded === cl.code ? null : cl.code)}
-                        className="flex items-center gap-3 px-4 py-3 border-b border-surface-border hover:bg-surface-hover cursor-pointer transition-colors"
-                      >
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${CLEARANCE_COLORS[cl.level] ?? ''}`}>
-                          {cl.code}
-                        </span>
-                        <div className="flex-1">
-                          <p className="text-xs font-medium text-sentinel-100">{cl.name}</p>
-                          <p className="text-[10px] text-sentinel-500">{TIER_NAMES[cl.level]}</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-sm font-bold text-sentinel-50">{cl.activeCount}</p>
-                          <p className="text-[10px] text-sentinel-500">Active</p>
-                        </div>
-                        <ChevronDown className={`w-3.5 h-3.5 text-sentinel-500 transition-transform ${expanded === cl.code ? 'rotate-180' : ''}`} />
-                      </div>
-                      {expanded === cl.code && (
-                        <div className="px-4 py-3 bg-surface-base border-b border-surface-border animate-fade-in">
-                          <p className="text-[10px] text-sentinel-400 mb-3">{cl.description}</p>
-                          <div className="space-y-0.5">
-                            <PermissionToggle label="Read system logs"    enabled={cl.level >= 1} />
-                            <PermissionToggle label="Export case reports" enabled={cl.level >= 2} />
-                            <PermissionToggle label="Create directives"   enabled={cl.level >= 4} />
-                            <PermissionToggle label="Emergency override"  enabled={cl.level >= 5} />
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+        {actionError && (
+          <div className="mb-4 text-xs text-severity-critical bg-severity-critical/10 border border-severity-critical/30 rounded-lg px-4 py-2.5">{actionError}</div>
+        )}
+
+        {/* Table */}
+        <div className="bg-surface-card border border-surface-border rounded-xl overflow-hidden">
+          <div className="grid px-4 py-2.5 border-b border-surface-border text-[10px] font-semibold tracking-widest text-sentinel-500 uppercase"
+            style={{ gridTemplateColumns: '120px 1fr 90px 120px 100px 140px 190px' }}>
+            <span>Case Ref</span><span>Reason</span><span>Duration</span><span>Requested By</span><span>Status</span><span>Expires</span><span className="text-right">Actions</span>
           </div>
 
-          {/* Right — Active Sessions */}
-          <div className="col-span-2">
-            <div className="bg-surface-card border border-surface-border rounded-xl overflow-hidden">
-              <div className="px-4 py-3 border-b border-surface-border flex items-center justify-between">
-                <h2 className="text-sm font-semibold text-sentinel-100 flex items-center gap-2">
-                  <Activity className="w-4 h-4 text-accent-emerald" />
-                  Active Sessions
-                  <span className="text-[10px] font-normal text-sentinel-500">— {ACTIVE_SESSIONS.length} online</span>
-                </h2>
-                <div className="relative">
-                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-sentinel-500" />
-                  <input value={search} onChange={e => setSearch(e.target.value)}
-                    placeholder="Search operators..."
-                    className="pl-7 pr-3 py-1.5 bg-surface-hover border border-surface-border rounded-lg text-[11px] text-sentinel-200 placeholder-sentinel-600 focus:outline-none focus:border-accent-blue/40 w-44"
-                  />
+          <div className="divide-y divide-surface-border">
+            {loading && Array.from({ length: 4 }).map((_, i) => <SkeletonRow key={i} />)}
+            {!loading && error && (
+              <div className="px-4 py-10 text-center text-xs text-severity-critical">
+                Failed to load requests: {error}
+              </div>
+            )}
+            {!loading && !error && all.length === 0 && (
+              <div className="px-4 py-10 text-center text-xs text-sentinel-500">No access exception requests yet.</div>
+            )}
+            {all.map(r => (
+              <div key={r.id} className="grid px-4 py-3 items-center hover:bg-surface-hover/50 transition-colors"
+                style={{ gridTemplateColumns: '120px 1fr 90px 120px 100px 140px 190px' }}>
+                <span className="font-mono text-[11px] text-sentinel-100">{r.case_reference}</span>
+                <span className="text-xs text-sentinel-300 truncate pr-2" title={r.operational_reason}>{r.operational_reason}</span>
+                <span className="font-mono text-[11px] text-sentinel-300">{r.requested_duration_hours}h</span>
+                <span className="font-mono text-[10px] text-sentinel-500">{r.requested_by_id.slice(0, 8)}</span>
+                <StatusBadge r={r} />
+                <span className="font-mono text-[10px] text-sentinel-400">
+                  {r.expires_at ? new Date(r.expires_at).toLocaleString() : '—'}
+                </span>
+                <div className="flex items-center justify-end gap-1">
+                  {canApprove && r.status === 'pending' && (
+                    <>
+                      <button
+                        onClick={() => setApproveTarget(r)}
+                        disabled={busyId === r.id}
+                        className="flex items-center gap-1 px-2.5 py-1.5 rounded text-[10px] font-semibold bg-severity-tint-low text-severity-low border border-severity-low/30 hover:bg-severity-low/20 transition-colors disabled:opacity-50"
+                      >
+                        {busyId === r.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />} Approve
+                      </button>
+                      <button
+                        onClick={() => runTransition(r.id, id => accessExceptionsApi.deny(id))}
+                        disabled={busyId === r.id}
+                        className="flex items-center gap-1 px-2.5 py-1.5 rounded text-[10px] font-semibold bg-severity-tint-critical text-severity-critical border border-severity-critical/30 hover:bg-severity-critical/20 transition-colors disabled:opacity-50"
+                      >
+                        <Ban className="w-3 h-3" /> Deny
+                      </button>
+                    </>
+                  )}
+                  {canApprove && r.status === 'approved' && (
+                    <button
+                      onClick={() => runTransition(r.id, id => accessExceptionsApi.revoke(id))}
+                      disabled={busyId === r.id}
+                      className="flex items-center gap-1 px-2.5 py-1.5 rounded text-[10px] font-semibold text-sentinel-300 border border-surface-border hover:bg-surface-hover transition-colors disabled:opacity-50"
+                    >
+                      <Undo2 className="w-3 h-3" /> Revoke
+                    </button>
+                  )}
+                  {(!canApprove || (r.status !== 'pending' && r.status !== 'approved')) && (
+                    <span className="text-[10px] text-sentinel-600">—</span>
+                  )}
                 </div>
               </div>
-
-              {/* Session table header */}
-              <div className="grid px-4 py-2 border-b border-surface-border text-[10px] font-semibold tracking-widest text-sentinel-500 uppercase"
-                style={{ gridTemplateColumns: '100px 1fr 100px 80px 80px 72px' }}>
-                <span>Operator</span><span>Name</span><span>Region</span><span>Started</span><span>CL</span><span>Actions</span>
-              </div>
-
-              {filteredSessions.map(s => (
-                <div key={s.id}
-                  className="grid px-4 py-3.5 border-b border-surface-border hover:bg-surface-hover transition-colors items-center"
-                  style={{ gridTemplateColumns: '100px 1fr 100px 80px 80px 72px' }}>
-                  <span className="font-mono text-xs text-sentinel-100">{s.operatorId}</span>
-                  <div>
-                    <p className="text-xs text-sentinel-200">{s.name}</p>
-                    <p className="text-[10px] text-sentinel-500 font-mono">{s.ip}</p>
-                  </div>
-                  <span className="text-[11px] text-sentinel-400">{s.region}</span>
-                  <span className="font-mono text-[10px] text-sentinel-400">{s.started}</span>
-                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border w-fit ${CLEARANCE_COLORS[s.clearance]}`}>
-                    CL-{s.clearance}
-                  </span>
-                  <div className="flex items-center gap-1">
-                    <button title="View" className="p-1.5 rounded hover:bg-surface-border text-sentinel-500 hover:text-sentinel-200 transition-colors"><Eye className="w-3 h-3" /></button>
-                    <button title="Revoke" className="p-1.5 rounded hover:bg-severity-critical/10 text-sentinel-500 hover:text-severity-critical transition-colors"><Ban className="w-3 h-3" /></button>
-                  </div>
-                </div>
-              ))}
-
-              <div className="px-4 py-3 flex items-center justify-between border-t border-surface-border">
-                <span className="text-[10px] text-sentinel-500">Showing {filteredSessions.length} sessions</span>
-                <Pagination page={page} total={filteredSessions.length} perPage={10} onPageChange={setPage} />
-              </div>
-            </div>
+            ))}
           </div>
         </div>
+
+        {!canApprove && (
+          <p className="mt-4 text-[11px] text-sentinel-500 flex items-center gap-1.5">
+            <ShieldCheck className="w-3.5 h-3.5" /> You can submit and track requests; approval requires exception:approve clearance.
+          </p>
+        )}
       </div>
+
+      {showCreate && <CreateRequestModal onClose={() => setShowCreate(false)} onCreated={() => { setShowCreate(false); refetch() }} />}
+      {approveTarget && (
+        <StepUpModal
+          title="Approve Access Exception"
+          subtitle={`Granting temporary access for ${approveTarget.case_reference}. Requires elevated authorization.`}
+          onClose={() => setApproveTarget(null)}
+          onSuccess={async () => {
+            await accessExceptionsApi.approve(approveTarget.id)
+            refetch()
+          }}
+        />
+      )}
     </div>
   )
 }

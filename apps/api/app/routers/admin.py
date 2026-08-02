@@ -1,19 +1,20 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_officer, require_permissions
 from app.models.entities import Officer
 from app.models.governance import ConfidenceReviewEvent
+from app.schemas.audit import AuditLogEntryOut
 from app.schemas.common import PaginatedResponse
 from app.schemas.confidence import (
     ConfidenceReviewDecision,
     ConfidenceReviewResponse,
     ConfidenceReviewSubmit,
 )
-from app.services import confidence_review_service
+from app.services import audit_service, confidence_review_service
 
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
 
@@ -32,6 +33,30 @@ def _to_response(event: ConfidenceReviewEvent) -> ConfidenceReviewResponse:
         reviewed_at=event.reviewed_at.isoformat() if event.reviewed_at else None,
         created_at=event.created_at.isoformat() if event.created_at else None,
     )
+
+
+@router.get("/audit", response_model=PaginatedResponse[AuditLogEntryOut])
+def list_audit_log(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=100),
+    action: str | None = Query(None),
+    actor_id: str | None = Query(None),
+    q: str | None = Query(None, description="Free-text filter over action/resource/detail"),
+    _officer: Officer = Depends(require_permissions("audit:view")),
+    db: Session = Depends(get_db),
+):
+    """Append-only audit trail (brief section 9), newest first. Gated
+    audit:view (supervisor/administrator). No write paths exist."""
+    items, total = audit_service.list_audit_entries(
+        db=db,
+        officer=_officer,
+        page=page,
+        page_size=page_size,
+        action=action,
+        actor_id=actor_id,
+        query=q,
+    )
+    return PaginatedResponse(items=items, total=total, page=page, page_size=page_size)
 
 
 @router.post(
