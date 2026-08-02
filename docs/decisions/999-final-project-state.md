@@ -87,15 +87,32 @@ current read or write path.
 
 ### Deferred engines / seams (explicitly later-phase)
 
-5. **Redaction engine scope** — engine runs only on case export;
-   every other read path (dashboard, entity detail, note lists, search)
-   uses the coarse classification-tier gate (008; 006 §6 #8/#15).
-6. **MFA (TOTP)** — real step-up re-auth exists (`require_step_up_auth`,
-   password re-check + purpose=step_up token); the OTP challenge is
-   still a placeholder stub (006 §6 #9).
-7. **Alert triggers** — live trigger: `confidence_change` only;
-   `resurfaced_offender` / `new_inter_district_link` are
-   schema-supported but have no ingestion path (007; 006 §6 #10).
+5. **Redaction engine scope** — engine runs on case export and
+   entity detail (follow-up component 2); the remaining read paths
+   (dashboard, note lists, search/list labels) use the coarse
+   classification-tier gate (008; 006 §6 #8/#15).
+6. **MFA (TOTP)** — resolved as part of the Phase 7 follow-up
+   (component 1): real RFC 6238 enrollment, challenge and step-up; see
+   the TOTP follow-up section below.
+7. **Alert triggers** — live trigger: `confidence_change` only. The two
+   PRD 180 triggers stay untriggered for two SEPARATE reasons, never one
+   combined line (007; 006 §6 #10):
+   - `resurfaced_offender` is schema-blocked: the model carries no
+     longitudinal activity timeline (persons have only `created_at`;
+     graph edges have `effective_from`/`effective_to`; nothing records
+     last-seen or disappearance), so "resurfacing" has no observable
+     state to fire on. Would need a NEW activity-timeline schema
+     (e.g. sightings/last-seen events) — not an ingestion path on the
+     current schema.
+   - `new_inter_district_link` is event-source-blocked: no edge-creation
+     path exists at runtime (`RelationshipEdgeRef` rows are created only
+     by seed scripts — verified across services/routers), and the only
+     entity with a `district_id` is Address — persons, vehicles, devices
+     and organizations carry no district attribute, and mirrors do not
+     store endpoints. Would need a NEW edge-creation event source plus a
+     district model for non-address entities.
+   Both remain listed in the vocabulary (007) and fire on nothing until
+   the respective schema/event work lands.
 
 ### Live gaps (real, current-state, not latent bugs)
 
@@ -124,9 +141,9 @@ current read or write path.
 - **In-memory pagination** — relationship lists and confidence surfaces
   paginate in Python after full materialization; Cypher/SQL-level paging
   is future perf work, not a correctness issue.
-- **OTP provider is fake** — login MFA and step-up both validate the
-  same placeholder provider; parity is the property, not real TOTP (006
-  §6 #9).
+- **OTP provider** — real TOTP (RFC 6238) since the follow-up
+  (component 1): enrollment, login challenge and step-up all verify
+  real codes via pyotp; no fake provider remains.
 - **Dashboard is region-scoped only** — one region id, KPIs + trends;
   no cross-region or org-wide view.
 - **Scoring inputs are density-only** — address density is the sole
@@ -170,11 +187,87 @@ implemented, and Phase 7 re-verified the whole chain from a clean
 checkout with real requests per phase. The earlier close-out estimate
 (~92% backend) holds as a *surface* figure, but it must be read with
 the honest breakdown: of the platform's richer behaviors, **3 of 3
-alert types exist but only 1 (confidence_change) can fire today**,
-**the redaction engine serves 1 of ~6 read paths (export)**, **MFA is
-real as step-up but TOTP is stubbed**, **merge hides absorbed entities
-but does not re-point the graph**, and **attachments/pinned views were
-never in scope**. Nothing deferred breaks a current read or write path;
-the master list in §2 is the standing debt register, and the two
-concurrency races found in Phase 7 were fixed and re-tested with the
-same harness that proved them.
+alert types exist but only 1 (confidence_change) can fire today** (the
+other two are blocked by distinct schema/event-source gaps — §2.7),
+**the redaction engine serves 2 of ~6 read paths (export + entity
+detail)**, **MFA is real TOTP end to end**, **merge hides absorbed
+entities but does not re-point the graph**, and
+**attachments/pinned views were never in scope**. Nothing deferred
+breaks a current read or write path; the master list in §2 is the
+standing debt register, and the two concurrency races found in Phase 7
+were fixed and re-tested with the same harness that proved them.
+
+## 6. Phase 7 follow-up (approved proposals, all verified)
+
+Three follow-up components were agreed and built on top of the Phase 7
+state; each was verified with real requests and real data, then
+committed separately.
+
+**6.1 Real TOTP MFA (component 1; commits c347612)** — the enrollment
+stub from Phase 6 is replaced by RFC 6238 TOTP (pyotp, `valid_window=1`
+clock drift).
+
+- Schema: `officers.totp_secret` (base32) + `officers.totp_enrolled_at`
+  (migration `5e3a9b8c1d4f`). The migration also runs the approved
+  one-time correction `UPDATE officers SET mfa_enabled=0 WHERE
+  totp_secret IS NULL`; at apply time the dangerous state
+  (mfa_enabled=1 without a secret) was **0 rows**, and the UPDATE
+  matched all 5 officers (all already 0) — a proven no-op, printed by
+  the migration itself. The down-migration drops ONLY the two columns
+  and never restores mfa_enabled (verified down/up live: columns 2 -> 0
+  -> 2, mfa_enabled untouched). MFA now means "enrolled AND enabled".
+- Endpoints: `POST /auth/mfa/enroll` (password re-auth; returns
+  `totp_secret` + `otpauth_url`, no QR image — frontend renders),
+  `POST /auth/mfa/confirm` (code must verify; only then
+  `mfa_enabled=1`), `POST /auth/mfa/disable` (step-up-gated AND
+  password re-check; clears secret + flag). Login challenge
+  (`mfa/verify`) and step-up verify real codes.
+- Verified flow (admin, real pyotp-generated codes): enroll with wrong
+  password 401 / right 200; confirm with bad code 401 (still disabled)
+  / real code 200 (enabled); login -> challenge; verify bad 401 / real
+  200; step-up bad 400 / real 200; disable without step-up 401 (shared
+  `require_step_up_auth` behavior, same as export), with step-up + bad
+  password 401, with both 200 (disabled); post-disable login returns a
+  direct token. Audit 1:1 (`mfa_enroll_failed` / `mfa_enroll_initiated`
+  / `mfa_confirm_failed` / `mfa_enrolled` / `mfa_verification_failed` /
+  `mfa_verified` / `mfa_disable_failed` / `mfa_disabled`).
+
+**6.2 Entity-detail field redaction (component 2; commit 89e7205)** —
+the export-only engine now also serves the entity detail read path,
+same policy mechanics (`_matches` classification threshold, reason
+vocabulary, only-success audit).
+
+- Vocabulary extension (governance.py): new entity type `entity`
+  (shared field `entity.label`) plus per-type fields — `person.aliases`
+  (whole-field masking; per-item deferred indefinitely),
+  `person.date_of_birth`, `organization.org_type`,
+  `vehicle.registration_number/make/model/color`,
+  `device.phone_number/imei/device_type`, `address.raw_text` (12
+  fields in total, per the approved list). Unredactable by design:
+  `id`, `type`, `classification`, `district_id`,
+  `is_protected_subject` (the last stays tier-gated, orthogonal to
+  field redaction).
+- Read shape: the 12 fields are `T | RedactedField | None` in
+  `EntityDetail`; `EntitySummary.label` stays `str` (search/list
+  out of scope). `network_service.get_entity` passes every matched
+  detail through `redaction_service.apply_entity_redactions`
+  (one `entity_redaction` audit row per masked detail, listing masked
+  fields + fired policy ids).
+- Verified: with zero rules, 5 baseline fetches (person/raj/address/
+  vehicle as admin + person as officer) are **byte-identical** to the
+  pre-change captures; with all 12 rules at
+  `restricted_operational`, person masks label+aliases+date_of_birth,
+  address masks label+raw_text, vehicle masks
+  label+registration_number+make+model (absent `color` stays absent),
+  officer-tier `is_protected_subject` keeps its `no_access` redaction;
+  search still returns plain labels. Rules were then deactivated and
+  the byte-identical regression re-passed.
+
+**6.3 Alert-trigger verdict (component 3, doc-only; this file §2.7)** —
+the two untriggered PRD 180 alerts stay unbuilt, recorded as two
+DISTINCT blockers: `resurfaced_offender` needs a new activity-timeline
+schema (nothing records last-seen/disappearance), and
+`new_inter_district_link` needs a new edge-creation event source (no
+runtime path writes `RelationshipEdgeRef` today) plus a district model
+for non-address entities. Neither is "one generic blocked" — they are
+different missing systems with different fixes.

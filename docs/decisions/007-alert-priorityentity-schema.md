@@ -28,6 +28,20 @@ does not exist (graph is seeded); `resurfaced_offender` needs temporal
 activity data that does not exist. Those two types are schema-supported
 but not yet generated — same treatment as repeat_offender below.
 
+> **Follow-up (2026-08-02, Phase 7 component 3):** the two untriggered
+> types were re-verified and stay unbuilt, recorded as two DISTINCT
+> blockers (999 §2.7, §6.3) — never one merged "blocked" line:
+> `resurfaced_offender` is schema-blocked (no longitudinal activity
+> timeline exists: persons have only `created_at`, edges have
+> `effective_from`/`effective_to`, nothing records last-seen or
+> disappearance — fixing it means a NEW activity-timeline schema);
+> `new_inter_district_link` is event-source-blocked (verified: zero
+> runtime paths create `RelationshipEdgeRef` rows — seed scripts only —
+> AND the only entity with `district_id` is Address, so persons,
+> vehicles, devices and organizations have no district to link on —
+> fixing it means a NEW edge-creation event source plus a district
+> model for non-address entities).
+
 **Serving:** `GET /alerts` (tier + jurisdiction gated, `alert:read`
 permission added additively to ANALYST/SUPERVISOR/ADMINISTRATOR — the
 same roles holding `dashboard:view`). `dashboard_service.py` remains
