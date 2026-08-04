@@ -7,9 +7,10 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.dependencies import get_current_officer, require_permissions
 from app.graph.driver import get_session
+from app.graph.queries import MAX_PATH_HOPS
 from app.models.entities import Officer
 from app.schemas.common import ConfidenceBand, PaginatedResponse
-from app.schemas.network import EntityDetail, EntitySummary, RelationshipOut
+from app.schemas.network import EntityDetail, EntitySummary, PathOut, RelationshipOut
 from app.services import network_service
 
 VALID_CONFIDENCE_BANDS = frozenset(band.value for band in ConfidenceBand)
@@ -223,3 +224,73 @@ def get_relationship(
             },
         )
     return result
+
+
+@router.get("/entities/{entity_id}/paths/{target_id}", response_model=list[PathOut])
+def get_paths(
+    entity_id: str,
+    target_id: str,
+    max_hops: int = Query(4, ge=1, le=MAX_PATH_HOPS),
+    limit: int = Query(10, ge=1, le=25),
+    officer: Officer = Depends(get_current_officer),
+    _pm: Officer = Depends(require_permissions("relationship:view")),
+    db: Session = Depends(get_db),
+    graph_session=Depends(get_session),
+):
+    """Shortest path(s) between two entities. Bounded by max_hops (graph
+    traversal cost) and limit (candidate paths considered before mirror
+    reconciliation, which may drop some — see network_service.find_paths)."""
+    try:
+        source_uuid = UUID(entity_id)
+        target_uuid = UUID(target_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": {
+                    "code": "invalid_uuid",
+                    "message": "Entity ID is not a valid UUID",
+                }
+            },
+        )
+    if source_uuid == target_uuid:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": {
+                    "code": "invalid_path_request",
+                    "message": "source and target must be different entities",
+                }
+            },
+        )
+    try:
+        paths = network_service.find_paths(
+            db=db,
+            graph_session=graph_session,
+            source_id=source_uuid,
+            target_id=target_uuid,
+            officer=officer,
+            max_hops=max_hops,
+            limit=limit,
+        )
+    except network_service.GraphUnavailableError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "error": {
+                    "code": "graph_unavailable",
+                    "message": "Relationship graph is temporarily unavailable",
+                }
+            },
+        )
+    if paths is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "error": {
+                    "code": "entity_not_found",
+                    "message": "Entity not found or not accessible to this officer",
+                }
+            },
+        )
+    return paths

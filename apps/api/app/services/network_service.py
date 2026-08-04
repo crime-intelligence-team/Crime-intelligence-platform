@@ -6,7 +6,11 @@ from sqlalchemy import func, literal, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.classification import ROLE_MAX_CLASSIFICATION, classification_filter
-from app.graph.queries import RELATIONSHIPS_OF_ENTITY, RELATIONSHIP_DETAIL
+from app.graph.queries import (
+    RELATIONSHIP_DETAIL,
+    RELATIONSHIPS_OF_ENTITY,
+    shortest_paths_query,
+)
 from app.models.base import CLASSIFICATION_RANK
 from app.models.base import ClassificationLevel as ModelClassificationLevel
 from app.models.entities import (
@@ -19,7 +23,7 @@ from app.models.entities import (
     Vehicle,
 )
 from app.schemas.common import ClassificationLevel, Confidence, ConfidenceBand, RedactedField
-from app.schemas.network import EntityDetail, EntitySummary, RelationshipOut
+from app.schemas.network import EntityDetail, EntitySummary, PathOut, RelationshipOut
 from app.services.district_service import get_accessible_district_ids
 from app.services.redaction_service import apply_entity_redactions
 
@@ -485,3 +489,88 @@ def get_relationship(
         return None  # invisible or dangling endpoint -> fail-closed
 
     return _relationship_out(relationship_id, rec["relationship_type"], source, target, mirror)
+
+
+def find_paths(
+    db: Session,
+    graph_session,
+    source_id: UUID,
+    target_id: UUID,
+    officer: Officer,
+    max_hops: int,
+    limit: int,
+) -> list[PathOut] | None:
+    """Shortest path(s) between two entities (undirected topology from
+    Neo4j's allShortestPaths), each edge reconciled against the Postgres
+    mirror exactly as in get_entity_relationships.
+
+    Returns None when either endpoint itself is not visible (router 404,
+    before any graph contact — existence of neither endpoint is leaked).
+    Otherwise a list of PathOut, possibly empty: no path exists, or every
+    candidate path contained at least one invisible/unmirrored edge or
+    endpoint — both cases are indistinguishable to the caller (fail-closed:
+    a path is only ever returned whole, never with a gap silently
+    dropped, since a gap would misrepresent the actual connectivity)."""
+    source = _endpoint_summary(db, source_id, officer)
+    if source is None:
+        return None
+    target = _endpoint_summary(db, target_id, officer)
+    if target is None:
+        return None
+
+    try:
+        records = graph_session.run(
+            shortest_paths_query(max_hops),
+            source_id=str(source_id),
+            target_id=str(target_id),
+            limit=limit,
+        ).data()
+    except Exception as exc:  # driver errors: connectivity, auth, query
+        raise GraphUnavailableError() from exc
+
+    visible_tiers = classification_filter(officer.role)
+    paths: list[PathOut] = []
+    for rec in records:
+        relationships: list[RelationshipOut] = []
+        path_ok = True
+        for edge in rec["edges"]:
+            mirror = _mirror_row(db, edge["relationship_id"], visible_tiers)
+            if mirror is None:
+                path_ok = False
+                break  # fail-closed: one gap invalidates the whole path
+            try:
+                edge_source_id = UUID(edge["source_entity_id"])
+                edge_target_id = UUID(edge["target_entity_id"])
+            except (TypeError, ValueError):
+                path_ok = False
+                break  # malformed graph data -> fail-closed
+            edge_source = _endpoint_summary(
+                db, edge_source_id, officer, entity_type=edge["source_entity_type"]
+            )
+            edge_target = _endpoint_summary(
+                db, edge_target_id, officer, entity_type=edge["target_entity_type"]
+            )
+            if edge_source is None or edge_target is None:
+                path_ok = False
+                break  # invisible or dangling hop -> fail-closed
+            relationships.append(
+                _relationship_out(
+                    edge["relationship_id"],
+                    edge["relationship_type"],
+                    edge_source,
+                    edge_target,
+                    mirror,
+                )
+            )
+        if not path_ok:
+            continue  # this candidate path failed out entirely, try the next
+        paths.append(
+            PathOut(
+                source_entity=source,
+                target_entity=target,
+                length=len(relationships),
+                relationships=relationships,
+            )
+        )
+
+    return paths

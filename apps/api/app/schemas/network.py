@@ -81,3 +81,16 @@ class RelationshipOut(BaseModel):
     effective_from: str | None = None
     effective_to: str | None = None
     case_id: str | None = None
+
+
+class PathOut(BaseModel):
+    """One shortest path between two entities. `relationships` is the
+    ordered hop sequence (edge[i] connects the pair of entities at path
+    position i/i+1) — each element's own source_entity/target_entity
+    reflects that edge's TRUE direction, which may run either way along the
+    path since traversal is undirected. length = len(relationships)."""
+
+    source_entity: EntitySummary
+    target_entity: EntitySummary
+    length: int
+    relationships: list[RelationshipOut]
