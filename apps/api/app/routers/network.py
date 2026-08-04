@@ -1,3 +1,4 @@
+from datetime import date
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -7,9 +8,11 @@ from app.core.database import get_db
 from app.core.dependencies import get_current_officer, require_permissions
 from app.graph.driver import get_session
 from app.models.entities import Officer
-from app.schemas.common import PaginatedResponse
+from app.schemas.common import ConfidenceBand, PaginatedResponse
 from app.schemas.network import EntityDetail, EntitySummary, RelationshipOut
 from app.services import network_service
+
+VALID_CONFIDENCE_BANDS = frozenset(band.value for band in ConfidenceBand)
 
 router = APIRouter(prefix="/api/v1", tags=["network"])
 
@@ -83,6 +86,18 @@ def get_entity(
 @router.get("/entities/{entity_id}/relationships", response_model=PaginatedResponse[RelationshipOut])
 def get_entity_relationships(
     entity_id: str,
+    relationship_type: str | None = Query(
+        None, description="Comma-separated Neo4j relationship types, e.g. LINKED_TO,MEMBER_OF"
+    ),
+    confidence_band: str | None = Query(
+        None, description="Comma-separated confidence bands: unconfirmed,probable,verified"
+    ),
+    effective_from: date | None = Query(
+        None, description="Only relationships effective on/after this date"
+    ),
+    effective_to: date | None = Query(
+        None, description="Only relationships effective on/before this date"
+    ),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     officer: Officer = Depends(get_current_officer),
@@ -102,6 +117,36 @@ def get_entity_relationships(
                 }
             },
         )
+
+    confidence_bands = set(confidence_band.split(",")) if confidence_band else None
+    if confidence_bands and not confidence_bands <= VALID_CONFIDENCE_BANDS:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": {
+                    "code": "invalid_confidence_band",
+                    "message": "Confidence band is not valid",
+                    "details": {
+                        "valid_bands": sorted(VALID_CONFIDENCE_BANDS),
+                        "invalid": sorted(confidence_bands - VALID_CONFIDENCE_BANDS),
+                    },
+                }
+            },
+        )
+
+    if effective_from is not None and effective_to is not None and effective_from > effective_to:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": {
+                    "code": "invalid_date_range",
+                    "message": "effective_from must not be after effective_to",
+                }
+            },
+        )
+
+    relationship_types = set(relationship_type.split(",")) if relationship_type else None
+
     try:
         result = network_service.get_entity_relationships(
             db=db,
@@ -110,6 +155,10 @@ def get_entity_relationships(
             officer=officer,
             page=page,
             page_size=page_size,
+            relationship_types=relationship_types,
+            confidence_bands=confidence_bands,
+            effective_from=effective_from,
+            effective_to=effective_to,
         )
     except network_service.GraphUnavailableError:
         raise HTTPException(

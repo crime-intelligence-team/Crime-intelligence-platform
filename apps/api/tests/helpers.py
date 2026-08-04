@@ -11,6 +11,7 @@ from sqlalchemy import text
 
 from app.core.database import SessionLocal, engine
 from app.core.security import hash_password
+from app.graph.driver import get_driver
 from app.main import app
 from app.models.entities import Officer, Role
 
@@ -19,6 +20,14 @@ def postgres_available() -> bool:
     try:
         with engine.connect() as conn:
             conn.execute(text("select 1"))
+        return True
+    except Exception:
+        return False
+
+
+def graph_available() -> bool:
+    try:
+        get_driver().verify_connectivity()
         return True
     except Exception:
         return False

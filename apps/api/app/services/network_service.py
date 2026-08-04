@@ -1,4 +1,5 @@
 import json
+from datetime import date
 from uuid import UUID
 
 from sqlalchemy import func, literal, or_, select
@@ -299,18 +300,41 @@ def _endpoint_summary(
 
 
 def _mirror_row(
-    db: Session, relationship_id: str, visible_tiers: list[ClassificationLevel]
+    db: Session,
+    relationship_id: str,
+    visible_tiers: list[ClassificationLevel],
+    confidence_bands: set[str] | None = None,
+    effective_from: date | None = None,
+    effective_to: date | None = None,
 ) -> RelationshipEdgeRef | None:
     """Mirror lookup, fail-closed: an edge with no RelationshipEdgeRef row —
     or whose mirror classification is above the viewer's tiers — returns
     None, exactly as if the edge did not exist. Both conditions are the same
-    404/omission; existence is never confirmed to an under-tier viewer."""
-    return db.execute(
-        select(RelationshipEdgeRef).where(
-            RelationshipEdgeRef.neo4j_relationship_id == relationship_id,
-            RelationshipEdgeRef.classification.in_(visible_tiers),
+    404/omission; existence is never confirmed to an under-tier viewer.
+
+    confidence_bands/effective_from/effective_to are optional list-endpoint
+    filters (all mirror-native columns, so they run as SQL WHERE clauses,
+    not a post-fetch Python filter). An edge with no effective_from is
+    excluded by either date bound — an unknown-effective edge can't be said
+    to fall within a caller-given window, so it fails closed like the
+    tier/mirror-absent cases above."""
+    stmt = select(RelationshipEdgeRef).where(
+        RelationshipEdgeRef.neo4j_relationship_id == relationship_id,
+        RelationshipEdgeRef.classification.in_(visible_tiers),
+    )
+    if confidence_bands:
+        stmt = stmt.where(RelationshipEdgeRef.confidence_band.in_(confidence_bands))
+    if effective_from is not None:
+        stmt = stmt.where(
+            RelationshipEdgeRef.effective_from.is_not(None),
+            RelationshipEdgeRef.effective_from >= effective_from,
         )
-    ).scalar_one_or_none()
+    if effective_to is not None:
+        stmt = stmt.where(
+            RelationshipEdgeRef.effective_from.is_not(None),
+            RelationshipEdgeRef.effective_from <= effective_to,
+        )
+    return db.execute(stmt).scalar_one_or_none()
 
 
 def _relationship_out(
@@ -346,18 +370,27 @@ def get_entity_relationships(
     officer: Officer,
     page: int,
     page_size: int,
+    relationship_types: set[str] | None = None,
+    confidence_bands: set[str] | None = None,
+    effective_from: date | None = None,
+    effective_to: date | None = None,
 ) -> tuple[list[RelationshipOut], int] | None:
     """Relationships of one entity, reconciled against the Postgres mirror.
 
     Pipeline: (1) gate the requested entity itself (404 if absent/invisible,
     before any graph contact); (2) traverse Neo4j for candidate edges —
-    topology only; (3) mirror lookup per edge, tier-gated; (4) gate the far
-    endpoint entity (tier + address jurisdiction); (5) assemble from mirror
-    fields. An edge fails out entirely on any single step (fail-closed).
-    Returns None when the requested entity is not visible (router 404);
-    otherwise (items, total) — an empty list means a visible entity with no
-    surviving edges. Pagination is applied in memory after reconciliation
-    (correctness first; Cypher-level paging is future perf work)."""
+    topology only; (3) relationship_types filter (Neo4j-native: type is not
+    a mirror column, so this runs in Python against the fetched rows, before
+    any mirror lookup is bothered with); (4) mirror lookup per surviving
+    edge, tier- and filter-gated (confidence_bands/effective_from/
+    effective_to — all mirror columns, filtered in SQL, see _mirror_row);
+    (5) gate the far endpoint entity (tier + address jurisdiction); (6)
+    assemble from mirror fields. An edge fails out entirely on any single
+    step (fail-closed). Returns None when the requested entity is not
+    visible (router 404); otherwise (items, total) — an empty list means a
+    visible entity with no surviving edges. Pagination is applied in memory
+    after reconciliation (correctness first; Cypher-level paging is future
+    perf work)."""
     source = _endpoint_summary(db, entity_id, officer)
     if source is None:
         return None
@@ -372,9 +405,18 @@ def get_entity_relationships(
     visible_tiers = classification_filter(officer.role)
     relationships: list[RelationshipOut] = []
     for rec in records:
-        mirror = _mirror_row(db, rec["relationship_id"], visible_tiers)
+        if relationship_types and rec["relationship_type"] not in relationship_types:
+            continue
+        mirror = _mirror_row(
+            db,
+            rec["relationship_id"],
+            visible_tiers,
+            confidence_bands=confidence_bands,
+            effective_from=effective_from,
+            effective_to=effective_to,
+        )
         if mirror is None:
-            continue  # fail-closed: no mirror row, or above viewer tier
+            continue  # fail-closed: no mirror row, above viewer tier, or filtered out
         try:
             endpoint_id = UUID(rec["endpoint_entity_id"])
         except (TypeError, ValueError):
