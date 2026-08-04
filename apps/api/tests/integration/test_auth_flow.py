@@ -14,11 +14,6 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-@pytest.fixture(scope="module")
-def c():
-    return helpers.client()
-
-
 def test_login_and_me(c):
     helpers.make_officer("it_admin", Role.ADMINISTRATOR)
     headers = helpers.login(c, "it_admin")

@@ -38,6 +38,17 @@ def global_search(
     _pm: Officer = Depends(require_permissions("search:basic")),
     db: Session = Depends(get_db),
 ):
+    if not q.strip():
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": {
+                    "code": "invalid_search_query",
+                    "message": "Search query must not be empty",
+                }
+            },
+        )
+
     requested = set(types.split(",")) if types else set(VALID_TYPES)
     invalid = requested - set(VALID_TYPES)
     if invalid:
