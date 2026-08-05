@@ -267,6 +267,50 @@ def _build_summary(entity_type: str, table, row) -> EntitySummary:
     )
 
 
+def _resolve_person_primary(db: Session, entity_id: UUID) -> UUID:
+    """Follow persons.merged_into_id to the ultimate surviving primary
+    (011). A no-op for non-person ids and for a person who was never
+    absorbed (the first lookup finds no row and returns entity_id
+    unchanged). Chains are possible — a person who already absorbed
+    someone else can later itself be absorbed as part of another merge —
+    so this walks rather than doing one hop; bounded to guard against a
+    cycle in corrupted data, which the merge service's own guards
+    (PrimaryAlreadyAbsorbedError/AlreadyMergedError) should never produce
+    in practice."""
+    current_id = entity_id
+    for _ in range(10):
+        next_id = db.execute(
+            select(Person.merged_into_id).where(Person.id == current_id)
+        ).scalar_one_or_none()
+        if next_id is None:
+            break
+        current_id = next_id
+    return current_id
+
+
+def _merge_cluster_ids(db: Session, primary_id: UUID) -> list[UUID]:
+    """All person ids merged directly or transitively into primary_id,
+    plus primary_id itself — the full set of Neo4j node ids that jointly
+    represent one logical identity for relationship/path traversal
+    (011/999 §2.8: "re-point at graph-query time"). A merge never writes
+    to Neo4j, so a merged identity's edges remain split across these
+    physical nodes; this is the set the caller queries as one unit.
+    Harmless (returns just [primary_id]) when primary_id isn't a person
+    or was never absorbed by anyone."""
+    cluster = {primary_id}
+    frontier = [primary_id]
+    for _ in range(20):
+        absorbed = db.execute(
+            select(Person.id).where(Person.merged_into_id.in_(frontier))
+        ).scalars().all()
+        new_ids = [i for i in absorbed if i not in cluster]
+        if not new_ids:
+            break
+        cluster.update(new_ids)
+        frontier = new_ids
+    return list(cluster)
+
+
 def _endpoint_summary(
     db: Session,
     entity_id: UUID,
@@ -281,7 +325,14 @@ def _endpoint_summary(
     the Neo4j shape). Gating = record classification within the viewer's
     tiers plus (address only) district jurisdiction — the same rules as
     get_entity. Returns None when the entity is absent or invisible:
-    fail-closed, nothing about it is revealed via relationships."""
+    fail-closed, nothing about it is revealed via relationships.
+
+    Merge re-pointing (011/999 §2.8): if entity_id names an absorbed
+    person, it resolves to the surviving primary FIRST, so any edge whose
+    endpoint is a merged-away identity renders under the primary's own
+    id/label/classification instead of the stale absorbed one."""
+    if entity_type is None or entity_type == "person":
+        entity_id = _resolve_person_primary(db, entity_id)
     visible_tiers = classification_filter(officer.role)
     accessible = get_accessible_district_ids(officer)
     types = [entity_type] if entity_type is not None else list(SEARCH_FIELDS.keys())
@@ -394,14 +445,25 @@ def get_entity_relationships(
     visible (router 404); otherwise (items, total) — an empty list means a
     visible entity with no surviving edges. Pagination is applied in memory
     after reconciliation (correctness first; Cypher-level paging is future
-    perf work)."""
+    perf work).
+
+    Merge re-pointing (011/999 §2.8): entity_id may name an absorbed
+    person — _endpoint_summary resolves it to the primary for the
+    response's own source_entity, and the graph is queried across the
+    WHOLE merge cluster (primary + everyone transitively absorbed into
+    it), so the primary's relationship list is the union of its own edges
+    and every absorbed twin's stale edges, each far endpoint independently
+    re-pointed to ITS OWN primary if it too happens to be merged."""
     source = _endpoint_summary(db, entity_id, officer)
     if source is None:
         return None
 
+    primary_id = _resolve_person_primary(db, entity_id)
+    cluster_ids = _merge_cluster_ids(db, primary_id)
+
     try:
         records = graph_session.run(
-            RELATIONSHIPS_OF_ENTITY, entity_id=str(entity_id)
+            RELATIONSHIPS_OF_ENTITY, entity_ids=[str(i) for i in cluster_ids]
         ).data()
     except Exception as exc:  # driver errors: connectivity, auth, query
         raise GraphUnavailableError() from exc
@@ -510,7 +572,16 @@ def find_paths(
     candidate path contained at least one invisible/unmirrored edge or
     endpoint — both cases are indistinguishable to the caller (fail-closed:
     a path is only ever returned whole, never with a gap silently
-    dropped, since a gap would misrepresent the actual connectivity)."""
+    dropped, since a gap would misrepresent the actual connectivity).
+
+    Merge re-pointing (011/999 §2.8): source_id/target_id may each name an
+    absorbed person; both resolve to their surviving primary for the
+    response's own source_entity/target_entity, and the graph is searched
+    across each side's WHOLE merge cluster (primary + absorbed twins), so
+    a path can legitimately start or end on a stale, absorbed node. If
+    both sides resolve to the SAME primary (merged into one identity, or
+    one is already the other's absorbed twin), there is no meaningful path
+    to "yourself" — an empty list is returned without contacting Neo4j."""
     source = _endpoint_summary(db, source_id, officer)
     if source is None:
         return None
@@ -518,11 +589,19 @@ def find_paths(
     if target is None:
         return None
 
+    source_primary = _resolve_person_primary(db, source_id)
+    target_primary = _resolve_person_primary(db, target_id)
+    if source_primary == target_primary:
+        return []
+
+    source_ids = _merge_cluster_ids(db, source_primary)
+    target_ids = _merge_cluster_ids(db, target_primary)
+
     try:
         records = graph_session.run(
             shortest_paths_query(max_hops),
-            source_id=str(source_id),
-            target_id=str(target_id),
+            source_ids=[str(i) for i in source_ids],
+            target_ids=[str(i) for i in target_ids],
             limit=limit,
         ).data()
     except Exception as exc:  # driver errors: connectivity, auth, query

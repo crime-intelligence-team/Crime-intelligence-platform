@@ -166,7 +166,7 @@ def priority_entities(
         with contextlib.contextmanager(get_session)() as graph_session:
             for base_rank, etype, entity_id, label, model in candidates:
                 records = graph_session.run(
-                    RELATIONSHIPS_OF_ENTITY, entity_id=str(entity_id)
+                    RELATIONSHIPS_OF_ENTITY, entity_ids=[str(entity_id)]
                 ).data()
                 if not records:
                     continue
