@@ -29,12 +29,13 @@ from app.core.classification import ROLE_MAX_CLASSIFICATION, classification_filt
 from app.models.base import CLASSIFICATION_RANK
 from app.models.base import ClassificationLevel as ModelClassificationLevel
 from app.models.entities import Case, District, Note, Officer, Role
-from app.models.governance import AuditLogEntry
+from app.models.governance import AuditLogEntry, CaseTeamMember
 from app.schemas.common import ClassificationLevel
 from app.schemas.cases import (
     CaseCreate,
     CaseDetail,
     CaseSummary,
+    CaseTeamMemberOut,
     ExportOfficer,
     ExportResponse,
     NoteCreate,
@@ -76,6 +77,27 @@ class InvalidVisibilityError(Exception):
 
 class InvalidFindingStateError(Exception):
     """Note finding_state outside {hypothesis, confirmed, disputed} (422 at the router)."""
+
+
+class OfficerNotFoundError(Exception):
+    """officer_id does not reference a real officer (422 at the router)."""
+
+
+class AlreadyTeamMemberError(Exception):
+    """Officer already has an active case_team_members row, or IS the case's
+    lead_officer_id (who is always implicitly on the team — see
+    list_team_members) (409 at the router)."""
+
+
+class TeamMemberNotFoundError(Exception):
+    """No active case_team_members row for this (case, officer) pair — there
+    is nothing to remove (404 at the router)."""
+
+
+class CannotRemoveLeadOfficerError(Exception):
+    """The lead officer isn't a case_team_members row and can't be removed
+    through this endpoint — reassigning the lead is a separate, unbuilt
+    operation (422 at the router)."""
 
 
 def _visible_case_stmt(
@@ -282,16 +304,194 @@ def update_case_status(
     return _to_detail(case)
 
 
-def _note_visible(note: Note, case: Case, officer: Officer) -> bool:
-    """Visibility-tier enforcement (Phase 5 component 3). Minimum-viable on
-    the real schema — no membership table, no officer hierarchy, no
-    note->approval link exist; each tier is flagged in docs/decisions/006.
-    Callers must already have passed the case-visible gate and the note
-    tier gate; this evaluates the visibility column only.
+def _to_team_member_out(officer: Officer, is_lead: bool, added_at) -> CaseTeamMemberOut:
+    return CaseTeamMemberOut(
+        officer_id=str(officer.id),
+        official_id=officer.official_id,
+        full_name=officer.full_name,
+        role=officer.role.value,
+        unit=officer.unit,
+        is_lead=is_lead,
+        added_at=str(added_at) if added_at else None,
+    )
+
+
+def list_team_members(
+    db: Session, officer: Officer, case_id: UUID
+) -> list[CaseTeamMemberOut] | None:
+    """Everyone with case_team note-tier access (006 §4 / 999 §2.2): the
+    lead officer (always implicitly on the team — synthetic entry,
+    is_lead=True, added_at=None, never a case_team_members row of its own)
+    plus every actively-added officer. None -> case invisible (router 404)."""
+    visible_tiers = classification_filter(officer.role)
+    accessible = get_accessible_district_ids(officer)
+    case = db.execute(
+        _visible_case_stmt(
+            visible_tiers,
+            accessible,
+            exempt_case_ids=exempt_case_ids(db, officer),
+        ).where(Case.id == case_id)
+    ).scalar_one_or_none()
+    if case is None:
+        return None
+
+    rows = db.execute(
+        select(CaseTeamMember, Officer)
+        .join(Officer, Officer.id == CaseTeamMember.officer_id)
+        .where(CaseTeamMember.case_id == case_id, CaseTeamMember.removed_at.is_(None))
+    ).all()
+    member_officer_ids = {o.id for _, o in rows}
+    members = [
+        _to_team_member_out(o, is_lead=(o.id == case.lead_officer_id), added_at=m.created_at)
+        for m, o in rows
+    ]
+    if case.lead_officer_id is not None and case.lead_officer_id not in member_officer_ids:
+        lead = db.get(Officer, case.lead_officer_id)
+        if lead is not None:
+            members.insert(0, _to_team_member_out(lead, is_lead=True, added_at=None))
+    return members
+
+
+def add_team_member(
+    db: Session,
+    officer: Officer,
+    case_id: UUID,
+    member_officer_id: UUID,
+    ip_address: str | None = None,
+) -> CaseTeamMemberOut | None:
+    """Add an officer to a case's team (case:write). None -> case invisible
+    (router 404). The lead officer is always implicitly on the team (see
+    list_team_members) and can't be separately added (409
+    already_team_member) — reassigning the lead is a different, unbuilt
+    operation. Re-adding a previously-removed officer inserts a fresh row
+    (a new auditable event), never revives the old one."""
+    visible_tiers = classification_filter(officer.role)
+    accessible = get_accessible_district_ids(officer)
+    case = db.execute(
+        _visible_case_stmt(
+            visible_tiers,
+            accessible,
+            exempt_case_ids=exempt_case_ids(db, officer),
+        ).where(Case.id == case_id)
+    ).scalar_one_or_none()
+    if case is None:
+        return None
+
+    member = db.get(Officer, member_officer_id)
+    if member is None:
+        raise OfficerNotFoundError(str(member_officer_id))
+    if member_officer_id == case.lead_officer_id:
+        raise AlreadyTeamMemberError(str(member_officer_id))
+
+    existing = db.execute(
+        select(CaseTeamMember).where(
+            CaseTeamMember.case_id == case_id,
+            CaseTeamMember.officer_id == member_officer_id,
+            CaseTeamMember.removed_at.is_(None),
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        raise AlreadyTeamMemberError(str(member_officer_id))
+
+    row = CaseTeamMember(case_id=case_id, officer_id=member_officer_id, added_by_id=officer.id)
+    db.add(row)
+    _write_audit_log(
+        db,
+        actor_id=officer.id,
+        action="case_team_member_added",
+        resource_type="case",
+        resource_id=str(case_id),
+        ip_address=ip_address,
+        detail=json.dumps(
+            {"case_number": case.case_number, "officer_id": str(member_officer_id)}
+        ),
+    )
+    db.commit()
+    db.refresh(row)
+    return _to_team_member_out(member, is_lead=False, added_at=row.created_at)
+
+
+def remove_team_member(
+    db: Session,
+    officer: Officer,
+    case_id: UUID,
+    member_officer_id: UUID,
+    ip_address: str | None = None,
+) -> CaseTeamMemberOut | None:
+    """Soft-remove an officer from a case's team (case:write). None -> case
+    invisible (router 404). Removing the lead officer isn't supported here
+    (CannotRemoveLeadOfficerError, 422) — reassigning the lead is a
+    separate, unbuilt operation."""
+    visible_tiers = classification_filter(officer.role)
+    accessible = get_accessible_district_ids(officer)
+    case = db.execute(
+        _visible_case_stmt(
+            visible_tiers,
+            accessible,
+            exempt_case_ids=exempt_case_ids(db, officer),
+        ).where(Case.id == case_id)
+    ).scalar_one_or_none()
+    if case is None:
+        return None
+
+    if member_officer_id == case.lead_officer_id:
+        raise CannotRemoveLeadOfficerError(str(member_officer_id))
+
+    row = db.execute(
+        select(CaseTeamMember).where(
+            CaseTeamMember.case_id == case_id,
+            CaseTeamMember.officer_id == member_officer_id,
+            CaseTeamMember.removed_at.is_(None),
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        raise TeamMemberNotFoundError(str(member_officer_id))
+
+    member = db.get(Officer, member_officer_id)
+    row.removed_at = datetime.now(timezone.utc)
+    _write_audit_log(
+        db,
+        actor_id=officer.id,
+        action="case_team_member_removed",
+        resource_type="case",
+        resource_id=str(case_id),
+        ip_address=ip_address,
+        detail=json.dumps(
+            {"case_number": case.case_number, "officer_id": str(member_officer_id)}
+        ),
+    )
+    db.commit()
+    db.refresh(row)
+    return _to_team_member_out(member, is_lead=False, added_at=row.created_at)
+
+
+def _active_team_officer_ids(db: Session, case_id: UUID) -> set[UUID]:
+    """Officer ids with a currently-active (not soft-removed) case_team_members
+    row for this case (006 §4 / 999 §2.2: real membership, replacing the old
+    lead-or-author-only check). Does NOT include lead_officer_id — the lead
+    is always implicitly on the team regardless of this table; callers OR
+    it in separately (see _note_visible, list_team_members)."""
+    rows = db.execute(
+        select(CaseTeamMember.officer_id).where(
+            CaseTeamMember.case_id == case_id,
+            CaseTeamMember.removed_at.is_(None),
+        )
+    ).scalars().all()
+    return set(rows)
+
+
+def _note_visible(
+    note: Note, case: Case, officer: Officer, team_officer_ids: set[UUID]
+) -> bool:
+    """Visibility-tier enforcement (Phase 5 component 3; case_team widened
+    to real membership per 006 §4 / 999 §2.2). Callers must already have
+    passed the case-visible gate and the note tier gate; this evaluates the
+    visibility column only.
 
     private_author      -> the note's own author
-    case_team           -> case lead officer OR note author (the only case
-                           membership the schema can express)
+    case_team           -> case lead officer OR note author OR an active
+                           case_team_members row (team_officer_ids, computed
+                           once per case by the caller — see _visible_notes)
     supervisory_chain   -> SUPERVISOR/ADMINISTRATOR role (no officer
                            hierarchy exists; weaker than a true chain)
     inter_unit_approved -> anyone who passed the gates (widest tier; the
@@ -302,7 +502,11 @@ def _note_visible(note: Note, case: Case, officer: Officer) -> bool:
     if note.visibility == Note.VISIBILITY_PRIVATE:
         return note.author_id == officer.id
     if note.visibility == Note.VISIBILITY_CASE_TEAM:
-        return case.lead_officer_id == officer.id or note.author_id == officer.id
+        return (
+            case.lead_officer_id == officer.id
+            or note.author_id == officer.id
+            or officer.id in team_officer_ids
+        )
     if note.visibility == Note.VISIBILITY_SUPERVISORY_CHAIN:
         return officer.role in (Role.SUPERVISOR, Role.ADMINISTRATOR)
     if note.visibility == Note.VISIBILITY_INTER_UNIT:
@@ -335,8 +539,9 @@ def _visible_notes(db: Session, case: Case, officer: Officer, case_id: UUID) -> 
             Note.classification.in_(visible_tiers),
         )
     ).scalars().all()
+    team_officer_ids = _active_team_officer_ids(db, case_id)
     return sorted(
-        (n for n in rows if _note_visible(n, case, officer)),
+        (n for n in rows if _note_visible(n, case, officer, team_officer_ids)),
         key=lambda n: (n.created_at.isoformat() if n.created_at else "", str(n.id)),
         reverse=True,
     )

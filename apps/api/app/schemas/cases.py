@@ -52,6 +52,25 @@ class CaseStatusUpdate(BaseModel):
     status: str
 
 
+class TeamMemberAdd(BaseModel):
+    officer_id: UUID
+
+
+class CaseTeamMemberOut(BaseModel):
+    """One row of GET /cases/{id}/team. is_lead=True is the case's
+    lead_officer_id (always implicitly on the team, never a row in
+    case_team_members — see case_service.list_team_members); added_at is
+    None for that synthetic entry since it was never "added"."""
+
+    officer_id: str
+    official_id: str
+    full_name: str
+    role: str
+    unit: str | None
+    is_lead: bool
+    added_at: str | None
+
+
 class NoteCreate(BaseModel):
     body: str
     visibility: str = "case_team"

@@ -14,6 +14,7 @@ import type {
   CaseCreate,
   CaseDetail,
   CaseSummary,
+  CaseTeamMemberOut,
   ConfidenceReviewDecision,
   ConfidenceReviewResponse,
   ConfidenceReviewSubmit,
@@ -51,7 +52,7 @@ import type {
   ZoneRiskOut,
 } from '@cip/shared-types'
 
-import { get, post, patch } from './client'
+import { get, post, patch, del } from './client'
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 export const authApi = {
@@ -105,6 +106,11 @@ export const casesApi = {
   export: (caseId: string, payload?: ExportRequest) => post<ExportResponse>(`/cases/${caseId}/export`, payload),
   updateStatus: (caseId: string, status: string) =>
     patch<CaseDetail>(`/cases/${caseId}/status`, { status }),
+  team: (caseId: string) => get<CaseTeamMemberOut[]>(`/cases/${caseId}/team`),
+  addTeamMember: (caseId: string, officerId: string) =>
+    post<CaseTeamMemberOut>(`/cases/${caseId}/team`, { officer_id: officerId }),
+  removeTeamMember: (caseId: string, officerId: string) =>
+    del<CaseTeamMemberOut>(`/cases/${caseId}/team/${officerId}`),
 }
 
 // ─── Alerts ───────────────────────────────────────────────────────────────────

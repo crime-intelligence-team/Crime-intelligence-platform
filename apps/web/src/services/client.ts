@@ -134,3 +134,7 @@ export function post<T>(path: string, body?: unknown): Promise<T> {
 export function patch<T>(path: string, body?: unknown): Promise<T> {
   return request<T>(path, { method: 'PATCH', body })
 }
+
+export function del<T>(path: string): Promise<T> {
+  return request<T>(path, { method: 'DELETE' })
+}

@@ -11,10 +11,12 @@ from app.schemas.cases import (
     CaseDetail,
     CaseStatusUpdate,
     CaseSummary,
+    CaseTeamMemberOut,
     ExportRequest,
     ExportResponse,
     NoteCreate,
     NoteSummary,
+    TeamMemberAdd,
 )
 from app.schemas.common import PaginatedResponse
 from app.services import case_service, redaction_service
@@ -204,6 +206,148 @@ def update_case_status(
                 }
             },
         )
+    return result
+
+
+def _case_uuid_or_422(case_id: str) -> UUID:
+    try:
+        return UUID(case_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": {
+                    "code": "invalid_uuid",
+                    "message": "Case ID is not a valid UUID",
+                }
+            },
+        )
+
+
+def _case_not_found() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail={
+            "error": {
+                "code": "case_not_found",
+                "message": "Case not found or not accessible to this officer",
+            }
+        },
+    )
+
+
+@router.get("/{case_id}/team", response_model=list[CaseTeamMemberOut])
+def list_team_members(
+    case_id: str,
+    officer: Officer = Depends(get_current_officer),
+    _pm: Officer = Depends(require_permissions("case:read")),
+    db: Session = Depends(get_db),
+):
+    result = case_service.list_team_members(
+        db=db, officer=officer, case_id=_case_uuid_or_422(case_id)
+    )
+    if result is None:
+        raise _case_not_found()
+    return result
+
+
+@router.post(
+    "/{case_id}/team", response_model=CaseTeamMemberOut, status_code=status.HTTP_201_CREATED
+)
+def add_team_member(
+    case_id: str,
+    payload: TeamMemberAdd,
+    request: Request,
+    officer: Officer = Depends(get_current_officer),
+    _pm: Officer = Depends(require_permissions("case:write")),
+    db: Session = Depends(get_db),
+):
+    ip_address = request.client.host if request.client else None
+    try:
+        result = case_service.add_team_member(
+            db=db,
+            officer=officer,
+            case_id=_case_uuid_or_422(case_id),
+            member_officer_id=payload.officer_id,
+            ip_address=ip_address,
+        )
+    except case_service.OfficerNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": {
+                    "code": "officer_not_found",
+                    "message": "officer_id does not reference a real officer",
+                }
+            },
+        )
+    except case_service.AlreadyTeamMemberError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "error": {
+                    "code": "already_team_member",
+                    "message": "Officer is already on this case's team",
+                }
+            },
+        )
+    if result is None:
+        raise _case_not_found()
+    return result
+
+
+@router.delete("/{case_id}/team/{member_officer_id}", response_model=CaseTeamMemberOut)
+def remove_team_member(
+    case_id: str,
+    member_officer_id: str,
+    request: Request,
+    officer: Officer = Depends(get_current_officer),
+    _pm: Officer = Depends(require_permissions("case:write")),
+    db: Session = Depends(get_db),
+):
+    try:
+        member_uuid = UUID(member_officer_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": {
+                    "code": "invalid_uuid",
+                    "message": "officer ID is not a valid UUID",
+                }
+            },
+        )
+    ip_address = request.client.host if request.client else None
+    try:
+        result = case_service.remove_team_member(
+            db=db,
+            officer=officer,
+            case_id=_case_uuid_or_422(case_id),
+            member_officer_id=member_uuid,
+            ip_address=ip_address,
+        )
+    except case_service.CannotRemoveLeadOfficerError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": {
+                    "code": "cannot_remove_lead_officer",
+                    "message": "The lead officer can't be removed from the team this way",
+                }
+            },
+        )
+    except case_service.TeamMemberNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "error": {
+                    "code": "team_member_not_found",
+                    "message": "Officer has no active team membership on this case",
+                }
+            },
+        )
+    if result is None:
+        raise _case_not_found()
     return result
 
 

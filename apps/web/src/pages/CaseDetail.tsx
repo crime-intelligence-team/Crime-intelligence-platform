@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { AlertTriangle, Lock, Send, X, FileText, MapPin, Shield, User, MessageSquare, Loader2 } from 'lucide-react'
+import { AlertTriangle, Lock, Send, X, FileText, MapPin, Shield, User, MessageSquare, Loader2, Users, UserMinus, UserPlus } from 'lucide-react'
 import { Button } from '../components/ui/Button'
 import { StepUpModal } from '../components/ui/StepUpModal'
 import { useApi } from '../hooks/useApi'
@@ -47,6 +47,9 @@ export default function CaseDetail() {
   const [exporting, setExporting] = useState(false)
   const [exportId, setExportId] = useState<string | null>(null)
   const [updatingStatus, setUpdatingStatus] = useState(false)
+  const [teamInput, setTeamInput] = useState('')
+  const [teamActionError, setTeamActionError] = useState<string | null>(null)
+  const [teamActionBusy, setTeamActionBusy] = useState(false)
 
   const { data: c, loading, error, refetch } = useApi(
     () => (id ? casesApi.byId(id) : Promise.resolve(null)),
@@ -54,6 +57,10 @@ export default function CaseDetail() {
   )
   const { data: notesPage, refetch: refetchNotes } = useApi(
     () => (id ? casesApi.notes(id) : Promise.resolve(null)),
+    [id],
+  )
+  const { data: team, refetch: refetchTeam } = useApi(
+    () => (id ? casesApi.team(id) : Promise.resolve(null)),
     [id],
   )
   const { data: districtPage } = useApi(() => mapApi.districts())
@@ -82,6 +89,35 @@ export default function CaseDetail() {
       refetch()
     } finally {
       setUpdatingStatus(false)
+    }
+  }
+
+  async function handleAddTeamMember() {
+    if (!id || !teamInput.trim()) return
+    setTeamActionBusy(true)
+    setTeamActionError(null)
+    try {
+      await casesApi.addTeamMember(id, teamInput.trim())
+      setTeamInput('')
+      refetchTeam()
+    } catch (e) {
+      setTeamActionError(e instanceof ApiError ? e.message : 'Failed to add team member')
+    } finally {
+      setTeamActionBusy(false)
+    }
+  }
+
+  async function handleRemoveTeamMember(officerId: string) {
+    if (!id) return
+    setTeamActionBusy(true)
+    setTeamActionError(null)
+    try {
+      await casesApi.removeTeamMember(id, officerId)
+      refetchTeam()
+    } catch (e) {
+      setTeamActionError(e instanceof ApiError ? e.message : 'Failed to remove team member')
+    } finally {
+      setTeamActionBusy(false)
     }
   }
 
@@ -260,6 +296,57 @@ export default function CaseDetail() {
           <div>
             <p className="section-label mb-1">Lead Officer</p>
             <p className="font-mono text-[11px] text-sentinel-300">{c.lead_officer_id ? c.lead_officer_id.slice(0, 8) : 'Unassigned'}</p>
+          </div>
+
+          <div className="pt-3 border-t border-surface-border">
+            <p className="section-label mb-2 flex items-center gap-1.5">
+              <Users className="w-3 h-3 text-sentinel-400" /> Case Team
+            </p>
+            <div className="space-y-1.5">
+              {(team ?? []).map(m => (
+                <div key={m.officer_id} className="flex items-center justify-between gap-2 bg-surface-card border border-surface-border rounded-md px-2 py-1.5">
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-medium text-sentinel-100 truncate">{m.full_name}</p>
+                    <p className="text-[10px] text-sentinel-500 truncate">
+                      {m.is_lead ? 'Lead' : m.role}{m.unit ? ` · ${m.unit}` : ''}
+                    </p>
+                  </div>
+                  {!m.is_lead && (
+                    <button
+                      onClick={() => handleRemoveTeamMember(m.officer_id)}
+                      disabled={teamActionBusy}
+                      className="p-1 rounded text-sentinel-500 hover:text-severity-critical transition-colors shrink-0"
+                      title="Remove from team"
+                    >
+                      <UserMinus className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              ))}
+              {(team ?? []).length === 0 && (
+                <p className="text-[11px] text-sentinel-500">No team members yet.</p>
+              )}
+            </div>
+            <div className="flex items-center gap-1.5 mt-2">
+              <input
+                value={teamInput}
+                onChange={e => setTeamInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') handleAddTeamMember() }}
+                placeholder="Officer ID…"
+                className="flex-1 min-w-0 bg-surface-card border border-surface-border rounded-md px-2 py-1.5 text-[11px] text-sentinel-100 placeholder-sentinel-500 focus:outline-none focus:border-accent-blue/40 transition-colors"
+              />
+              <button
+                onClick={handleAddTeamMember}
+                disabled={teamActionBusy || !teamInput.trim()}
+                className="p-1.5 rounded-md bg-surface-card border border-surface-border text-sentinel-300 hover:text-accent-blue transition-colors shrink-0 disabled:opacity-50"
+                title="Add to team"
+              >
+                <UserPlus className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            {teamActionError && (
+              <p className="text-[10px] text-severity-critical mt-1">{teamActionError}</p>
+            )}
           </div>
 
           <div className="pt-2 border-t border-surface-border">

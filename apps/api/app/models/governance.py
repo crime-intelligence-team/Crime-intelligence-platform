@@ -125,6 +125,26 @@ class EntityResolutionEvent(Base, TimestampMixin):
     reversed_at = Column(DateTime(timezone=True), nullable=True)
 
 
+class CaseTeamMember(Base, TimestampMixin):
+    """Real case-team membership (006 §4 / 999 §2.2 open schema question):
+    note visibility's case_team tier was lead-officer-or-author only
+    because no membership table existed. Soft removal via removed_at
+    (never a physical delete) mirrors EntityResolutionEvent.reversed_at —
+    the history of who was on a case and when is kept, not lost. A
+    partial unique index (migration 3f7a2c9e5b1d) enforces at most one
+    ACTIVE row per (case_id, officer_id) pair; re-adding a removed
+    officer inserts a new row rather than reviving the old one, so each
+    add/remove is its own auditable event."""
+
+    __tablename__ = "case_team_members"
+
+    id = uuid_pk_column()
+    case_id = Column(UUID(as_uuid=True), ForeignKey("cases.id"), nullable=False)
+    officer_id = Column(UUID(as_uuid=True), ForeignKey("officers.id"), nullable=False)
+    added_by_id = Column(UUID(as_uuid=True), ForeignKey("officers.id"), nullable=False)
+    removed_at = Column(DateTime(timezone=True), nullable=True)
+
+
 class AuditLogEntry(Base, TimestampMixin):
     """Append-only log: every search, filter, view, export, note action, approval (brief section 9)."""
 

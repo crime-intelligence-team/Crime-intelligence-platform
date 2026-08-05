@@ -27,6 +27,16 @@ export interface CaseDetail extends CaseSummary {
   lead_officer_id: string | null
 }
 
+export interface CaseTeamMemberOut {
+  officer_id: string
+  official_id: string
+  full_name: string
+  role: string
+  unit: string | null
+  is_lead: boolean
+  added_at: string | null
+}
+
 export interface NoteCreate {
   body: string
   visibility?: string
