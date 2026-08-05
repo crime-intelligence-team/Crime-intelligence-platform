@@ -63,7 +63,11 @@ def get_district_summary(db: Session, district_id: UUID, officer: Officer) -> Di
         return None
     return DistrictQuickSummary(
         district_id=str(district.id),
-        open_cases=db.query(Case).filter(Case.district_id == district_id, Case.status == "open").count(),
+        # not literally == "open" — under_investigation/pending_review
+        # (case_service: Case.VALID_STATUSES) still count as open work.
+        open_cases=db.query(Case)
+        .filter(Case.district_id == district_id, Case.status != Case.STATUS_CLOSED)
+        .count(),
         active_alerts=0,
         priority_entities=0,
         classification=district.classification.value,

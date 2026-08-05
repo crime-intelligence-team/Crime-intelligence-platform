@@ -11,9 +11,12 @@ import { ApiError } from '../services/client'
 import type { CaseSummary, ClassificationLevel } from '@cip/shared-types'
 
 const statusConfig: Record<string, { label: string; icon: any; color: string }> = {
-  open:   { label: 'Open',     icon: AlertCircle, color: 'text-accent-blue' },
-  closed: { label: 'Closed',   icon: CheckCircle, color: 'text-severity-low' },
+  open:                 { label: 'Open',                icon: AlertCircle, color: 'text-accent-blue' },
+  under_investigation:  { label: 'Under Investigation',  icon: Clock,       color: 'text-severity-medium' },
+  pending_review:       { label: 'Pending Review',       icon: Clock,       color: 'text-severity-high' },
+  closed:               { label: 'Closed',               icon: CheckCircle, color: 'text-severity-low' },
 }
+const STATUS_ORDER = ['open', 'under_investigation', 'pending_review', 'closed'] as const
 
 const classificationPill: Record<string, string> = {
   open_operational: 'bg-severity-tint-low text-severity-low border-severity-low/30',
@@ -47,7 +50,7 @@ function CaseRow({ c, isActive, onClick }: { c: CaseSummary; isActive: boolean; 
         isActive ? 'bg-brand-500/5' : 'hover:bg-bg-surface-2 hover:translate-x-0.5'
       }`}
     >
-      <StatusDot status={c.status === 'open' ? 'active' : 'normal'} />
+      <StatusDot status={c.status !== 'closed' ? 'active' : 'normal'} />
       <span className="font-mono text-[11px] text-text-tertiary whitespace-nowrap">{c.case_number}</span>
       <span className="text-sm font-medium text-text-primary truncate" title={c.title}>{c.title}</span>
       <div className="flex items-center gap-1.5 text-xs truncate">
@@ -179,8 +182,13 @@ export default function CaseWorkspace() {
   const { data: page, loading, error, refetch } = useApi(() => casesApi.list())
   const cases = page?.items ?? []
 
-  const openCount = cases.filter(c => c.status === 'open').length
+  // "Open" here means not yet closed (matches the backend KPI: open,
+  // under_investigation and pending_review are all still active work).
+  const openCount = cases.filter(c => c.status !== 'closed').length
   const closedCount = cases.filter(c => c.status === 'closed').length
+  const statusCounts = Object.fromEntries(
+    STATUS_ORDER.map(s => [s, cases.filter(c => c.status === s).length])
+  ) as Record<typeof STATUS_ORDER[number], number>
 
   function handleCaseClick(c: CaseSummary) {
     setActiveCase(c.id)
@@ -298,7 +306,9 @@ export default function CaseWorkspace() {
                 </div>
                 <div className="flex flex-col">
                   {[
-                    { label: 'Open', count: openCount, color: 'bg-accent-blue', text: 'text-accent-blue' },
+                    { label: 'Open', count: statusCounts.open, color: 'bg-accent-blue', text: 'text-accent-blue' },
+                    { label: 'Under Investigation', count: statusCounts.under_investigation, color: 'bg-severity-medium', text: 'text-severity-medium' },
+                    { label: 'Pending Review', count: statusCounts.pending_review, color: 'bg-severity-high', text: 'text-severity-high' },
                     { label: 'Closed', count: closedCount, color: 'bg-severity-low', text: 'text-severity-low' },
                   ].map(s => (
                     <div key={s.label} className="flex items-center justify-between px-4 py-2.5 border-b border-border-default last:border-0 hover:bg-bg-surface-2 transition-colors">

@@ -51,11 +51,14 @@ def _kpi_strip(
         .scalar()
         or 0
     )
+    # "open_cases" = not yet closed, not literally status == "open" — a
+    # case widened to under_investigation/pending_review (case_service:
+    # Case.VALID_STATUSES) is still ongoing work and must keep counting.
     open_cases = (
         db.query(func.count(Case.id))
         .filter(
             Case.district_id == district_id,
-            Case.status == "open",
+            Case.status != Case.STATUS_CLOSED,
             Case.classification.in_(visible_tiers),
         )
         .scalar()

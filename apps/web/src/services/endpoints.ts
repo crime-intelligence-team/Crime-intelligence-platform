@@ -51,7 +51,7 @@ import type {
   ZoneRiskOut,
 } from '@cip/shared-types'
 
-import { get, post } from './client'
+import { get, post, patch } from './client'
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 export const authApi = {
@@ -103,6 +103,8 @@ export const casesApi = {
     get<PaginatedResponse<NoteSummary>>(`/cases/${caseId}/notes`, { page, page_size: pageSize }),
   addNote: (caseId: string, payload: NoteCreate) => post<NoteSummary>(`/cases/${caseId}/notes`, payload),
   export: (caseId: string, payload?: ExportRequest) => post<ExportResponse>(`/cases/${caseId}/export`, payload),
+  updateStatus: (caseId: string, status: string) =>
+    patch<CaseDetail>(`/cases/${caseId}/status`, { status }),
 }
 
 // ─── Alerts ───────────────────────────────────────────────────────────────────

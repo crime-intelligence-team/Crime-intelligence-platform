@@ -2,9 +2,13 @@
 
 Jurisdiction + tier gating reuse the Phase 3/4 machinery
 (classification_filter, get_accessible_district_ids) — no reinvention.
-Case.status vocabulary: {open, closed} — "open" is the only state the
-brief names (the dashboard open-cases KPI reads status == "open");
-"closed" is the minimal complement (docs/decisions/006).
+Case.status vocabulary: {open, under_investigation, pending_review,
+closed} (widened from the Phase 5 {open, closed} pair — 006 §6 #11 /
+999 §2.4: no wider vocabulary was ever specified, so this is a
+deliberate design choice, not a documented requirement). update_case_status
+is the first status-mutation path — status was create-only before this;
+any VALID_STATUSES value is reachable from any other (no transition
+graph is enforced, since none is documented).
 
 Note: cases with district_id IS NULL are invisible to jurisdiction-scoped
 officers (there is nothing to scope against) — same semantics as entity
@@ -47,7 +51,7 @@ class InvalidCaseNumberError(Exception):
 
 
 class InvalidCaseStatusError(Exception):
-    """Status outside the {open, closed} vocabulary (422 at the router)."""
+    """Status outside Case.VALID_STATUSES (422 at the router)."""
 
 
 class CaseNumberTakenError(Exception):
@@ -222,6 +226,59 @@ def create_case(
     db.add(case)
     db.commit()
     db.refresh(case)
+    return _to_detail(case)
+
+
+def update_case_status(
+    db: Session,
+    officer: Officer,
+    case_id: UUID,
+    new_status: str,
+    ip_address: str | None = None,
+) -> CaseDetail | None:
+    """Change a case's status (the first status-mutation path — status was
+    create-only before this). Same visibility gate as get_case: None means
+    invisible/nonexistent (router 404), fail-closed like every other
+    record-level lookup in this file. new_status must be in
+    Case.VALID_STATUSES (422) — no transition graph is enforced (any status
+    may move to any other), since none is documented (006 §6 #11).
+
+    A no-op (new_status == current status) is accepted but not written or
+    audited — nothing changed, so nothing to log."""
+    visible_tiers = classification_filter(officer.role)
+    accessible = get_accessible_district_ids(officer)
+    case = db.execute(
+        _visible_case_stmt(
+            visible_tiers,
+            accessible,
+            exempt_case_ids=exempt_case_ids(db, officer),
+        ).where(Case.id == case_id)
+    ).scalar_one_or_none()
+    if case is None:
+        return None
+    if new_status not in Case.VALID_STATUSES:
+        raise InvalidCaseStatusError(new_status)
+
+    if new_status != case.status:
+        previous_status = case.status
+        case.status = new_status
+        _write_audit_log(
+            db,
+            actor_id=officer.id,
+            action="case_status_changed",
+            resource_type="case",
+            resource_id=str(case.id),
+            ip_address=ip_address,
+            detail=json.dumps(
+                {
+                    "case_number": case.case_number,
+                    "previous_status": previous_status,
+                    "new_status": new_status,
+                }
+            ),
+        )
+        db.commit()
+        db.refresh(case)
     return _to_detail(case)
 
 

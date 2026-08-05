@@ -43,6 +43,15 @@ class CaseDetail(CaseSummary):
     lead_officer_id: str | None
 
 
+class CaseStatusUpdate(BaseModel):
+    """Body for PATCH /cases/{id}/status. Any Case.VALID_STATUSES value is
+    a valid target from any current status — this vocabulary has no
+    documented workflow ordering (006 §6 #11), so no transition graph is
+    enforced beyond "must be a real status"."""
+
+    status: str
+
+
 class NoteCreate(BaseModel):
     body: str
     visibility: str = "case_team"

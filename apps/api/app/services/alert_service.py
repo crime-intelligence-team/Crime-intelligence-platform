@@ -179,12 +179,16 @@ def priority_entities(
                 linked_cases = [m.case_id for m in mirrors if m.case_id is not None]
                 open_linked = 0
                 if linked_cases:
+                    # "case-linked" signal = linked to a case still being
+                    # worked, i.e. != closed — not literally == STATUS_OPEN,
+                    # so under_investigation/pending_review cases (widened
+                    # vocabulary, case_service) still drive this signal.
                     open_linked = db.execute(
                         select(func.count())
                         .select_from(Case)
                         .where(
                             Case.id.in_(linked_cases),
-                            Case.status == Case.STATUS_OPEN,
+                            Case.status != Case.STATUS_CLOSED,
                         )
                     ).scalar() or 0
                 degree = sum(

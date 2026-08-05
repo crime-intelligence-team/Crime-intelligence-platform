@@ -130,3 +130,7 @@ export function get<T>(
 export function post<T>(path: string, body?: unknown): Promise<T> {
   return request<T>(path, { method: 'POST', body })
 }
+
+export function patch<T>(path: string, body?: unknown): Promise<T> {
+  return request<T>(path, { method: 'PATCH', body })
+}

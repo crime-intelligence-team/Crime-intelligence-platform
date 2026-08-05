@@ -140,13 +140,20 @@ class Case(Base, ClassificationMixin, ProvenanceMixin, TimestampMixin):
 
     __tablename__ = "cases"
 
-    # Phase 5 vocabulary: "open" is the only state the brief names (the
-    # dashboard open-cases KPI reads status == "open"); "closed" is the
-    # minimal complement. Adding states later is backward-compatible —
-    # the column is a free string and the KPI only ever reads "open".
+    # Phase 5 introduced {open, closed} — "open" was the only state the
+    # brief named. Widened here (006 §6 #11 / 999 §2.4) to the granularity
+    # a real case workspace needs between filing and closing. The column
+    # stays a free String (no migration needed — see the model docstring
+    # precedent this comment replaces); "active" for KPI/priority purposes
+    # means != STATUS_CLOSED, not == STATUS_OPEN, so under_investigation
+    # and pending_review still count as ongoing work everywhere that matters.
     STATUS_OPEN = "open"
+    STATUS_UNDER_INVESTIGATION = "under_investigation"
+    STATUS_PENDING_REVIEW = "pending_review"
     STATUS_CLOSED = "closed"
-    VALID_STATUSES = frozenset({STATUS_OPEN, STATUS_CLOSED})
+    VALID_STATUSES = frozenset(
+        {STATUS_OPEN, STATUS_UNDER_INVESTIGATION, STATUS_PENDING_REVIEW, STATUS_CLOSED}
+    )
 
     id = uuid_pk_column()
     case_number = Column(String, unique=True, nullable=False)

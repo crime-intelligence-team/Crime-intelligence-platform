@@ -9,6 +9,7 @@ from app.models.entities import Case, Note, Officer
 from app.schemas.cases import (
     CaseCreate,
     CaseDetail,
+    CaseStatusUpdate,
     CaseSummary,
     ExportRequest,
     ExportResponse,
@@ -139,6 +140,60 @@ def get_case(
             },
         )
     result = case_service.get_case(db=db, officer=officer, case_id=case_uuid)
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "error": {
+                    "code": "case_not_found",
+                    "message": "Case not found or not accessible to this officer",
+                }
+            },
+        )
+    return result
+
+
+@router.patch("/{case_id}/status", response_model=CaseDetail)
+def update_case_status(
+    case_id: str,
+    payload: CaseStatusUpdate,
+    request: Request,
+    officer: Officer = Depends(get_current_officer),
+    _pm: Officer = Depends(require_permissions("case:write")),
+    db: Session = Depends(get_db),
+):
+    try:
+        case_uuid = UUID(case_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": {
+                    "code": "invalid_uuid",
+                    "message": "Case ID is not a valid UUID",
+                }
+            },
+        )
+    ip_address = request.client.host if request.client else None
+    try:
+        result = case_service.update_case_status(
+            db=db,
+            officer=officer,
+            case_id=case_uuid,
+            new_status=payload.status,
+            ip_address=ip_address,
+        )
+    except case_service.InvalidCaseStatusError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": {
+                    "code": "invalid_status",
+                    "message": "Case status is not valid",
+                    "details": {"valid_statuses": sorted(Case.VALID_STATUSES)},
+                }
+            },
+        )
     if result is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

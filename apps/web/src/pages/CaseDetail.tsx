@@ -30,8 +30,11 @@ const classificationLabel: Record<string, string> = {
 
 const statusConfig: Record<string, { label: string; color: string }> = {
   open: { label: 'Open', color: 'text-accent-blue' },
+  under_investigation: { label: 'Under Investigation', color: 'text-severity-medium' },
+  pending_review: { label: 'Pending Review', color: 'text-severity-high' },
   closed: { label: 'Closed', color: 'text-severity-low' },
 }
+const STATUS_OPTIONS = ['open', 'under_investigation', 'pending_review', 'closed'] as const
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default function CaseDetail() {
@@ -43,8 +46,9 @@ export default function CaseDetail() {
   const [stepUp, setStepUp] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [exportId, setExportId] = useState<string | null>(null)
+  const [updatingStatus, setUpdatingStatus] = useState(false)
 
-  const { data: c, loading, error } = useApi(
+  const { data: c, loading, error, refetch } = useApi(
     () => (id ? casesApi.byId(id) : Promise.resolve(null)),
     [id],
   )
@@ -67,6 +71,17 @@ export default function CaseDetail() {
       refetchNotes()
     } finally {
       setSubmittingNote(false)
+    }
+  }
+
+  async function handleStatusChange(next: string) {
+    if (!id || next === c?.status) return
+    setUpdatingStatus(true)
+    try {
+      await casesApi.updateStatus(id, next)
+      refetch()
+    } finally {
+      setUpdatingStatus(false)
     }
   }
 
@@ -116,7 +131,19 @@ export default function CaseDetail() {
               </span>
               <span className="font-mono text-[11px] text-sentinel-400">{c.case_number}</span>
               <span className={`text-[11px] font-medium flex items-center gap-1 ${sc.color}`}>
-                <AlertTriangle className="w-3 h-3" /> {sc.label}
+                <AlertTriangle className="w-3 h-3" />
+                <select
+                  value={c.status}
+                  disabled={updatingStatus}
+                  onChange={e => handleStatusChange(e.target.value)}
+                  className={`bg-transparent border-none outline-none cursor-pointer ${sc.color}`}
+                >
+                  {STATUS_OPTIONS.map(s => (
+                    <option key={s} value={s} className="bg-surface-card text-sentinel-100">
+                      {statusConfig[s].label}
+                    </option>
+                  ))}
+                </select>
               </span>
               {c.created_at && <span className="text-[11px] text-sentinel-500">• Created {new Date(c.created_at).toLocaleString()}</span>}
             </div>
