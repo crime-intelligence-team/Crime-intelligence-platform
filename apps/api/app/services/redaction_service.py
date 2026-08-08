@@ -2,10 +2,15 @@
 
 Composes with — never replaces — record-level tier gating: the tier
 filter (classification_filter) decides which RECORDS survive; this engine
-decides which FIELDS inside surviving records are masked in the export
-artifact. It applies in the export pipeline only — every PRD redaction
-citation is export/inter-unit scoped, and no read path emits redacted
-content (GET /cases, network, dashboard, alerts untouched).
+decides which FIELDS inside surviving records are masked. Three read
+paths apply it today: export (apply_redactions), entity detail (Phase 7
+follow-up component 2, apply_entity_redactions), and the case note list
+(999 §2.5, apply_note_list_redactions — same note.body vocabulary export
+already used, widened to the live GET /cases/{id}/notes path). Dashboard,
+alerts and search/list labels remain on the coarse classification-tier
+gate only (999 §2.5): they surface aggregate counts or plain labels, not
+the kind of free-text content this vocabulary targets — record-level
+exclusion is the correct (not merely interim) mechanism there, not a gap.
 
 Two mechanisms, both PRD-backed:
   - Policy rules: admin-defined RedactionPolicyDecision rows
@@ -33,7 +38,7 @@ from sqlalchemy.orm import Session
 from app.models.base import CLASSIFICATION_RANK
 from app.models.entities import Officer
 from app.models.governance import AuditLogEntry, RedactionPolicyDecision
-from app.schemas.cases import ExportResponse, RedactionPolicyCreate
+from app.schemas.cases import ExportResponse, NoteSummary, RedactionPolicyCreate
 from app.schemas.network import EntityDetail
 from app.schemas.common import RedactedField
 
@@ -240,6 +245,80 @@ def apply_redactions(
                 "ip_address": ip_address,
             }
         ),
+    )
+    db.commit()
+    return updated
+
+
+def apply_note_list_redactions(
+    db: Session,
+    officer: Officer,
+    case_id: str,
+    notes: list[NoteSummary],
+    ip_address: str | None,
+) -> list[NoteSummary]:
+    """Field-level redaction for the live case note list (999 §2.5 follow-up:
+    widens the note.body policy vocabulary export already applied to the
+    GET /cases/{id}/notes path too — same engine, same policy rows,
+    decision 008). Only entity_type="note"/field="body" rules apply here
+    (there's no case-summary field on a note list to mask). Masking never
+    changes which notes are returned, only note.body's content — the tier
+    + visibility gates in case_service already decided the note survives;
+    this only decides whether its body is visible.
+
+    Returns the list unchanged when nothing fires — the no-rules path is
+    byte-identical output. Writes ONE note_list_redaction audit entry per
+    call that masked at least one note (only-success auditing, same as
+    export/entity redaction)."""
+    policies = list(
+        db.execute(
+            select(RedactionPolicyDecision).where(
+                RedactionPolicyDecision.active.is_(True),
+                RedactionPolicyDecision.entity_type == "note",
+                RedactionPolicyDecision.field == "body",
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not policies:
+        return notes
+
+    fired: list[str] = []
+    masked_note_ids: list[str] = []
+    updated: list[NoteSummary] = []
+    changed = False
+    for note in notes:
+        if isinstance(note.body, RedactedField):
+            updated.append(note)
+            continue
+        policy_ids = [str(p.id) for p in policies if _matches(p, note.classification)]
+        if policy_ids:
+            fired.extend(policy_ids)
+            masked_note_ids.append(note.id)
+            updated.append(
+                note.model_copy(update={"body": RedactedField(redacted=True, reason="policy")})
+            )
+            changed = True
+        else:
+            updated.append(note)
+
+    if not changed:
+        return notes
+
+    _write_audit_log(
+        db=db,
+        actor_id=officer.id,
+        action="note_list_redaction",
+        resource_type="case",
+        resource_id=case_id,
+        detail=json.dumps(
+            {
+                "redacted_note_ids": masked_note_ids,
+                "applied_policy_ids": sorted(set(fired)),
+            }
+        ),
+        ip_address=ip_address,
     )
     db.commit()
     return updated

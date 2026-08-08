@@ -364,6 +364,7 @@ def remove_team_member(
 @router.get("/{case_id}/notes", response_model=PaginatedResponse[NoteSummary])
 def list_notes(
     case_id: str,
+    request: Request,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     officer: Officer = Depends(get_current_officer),
@@ -396,6 +397,10 @@ def list_notes(
             },
         )
     items, total = result
+    ip_address = request.client.host if request.client else None
+    items = redaction_service.apply_note_list_redactions(
+        db=db, officer=officer, case_id=case_id, notes=items, ip_address=ip_address
+    )
     return PaginatedResponse(items=items, total=total, page=page, page_size=page_size)
 
 
