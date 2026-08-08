@@ -49,3 +49,9 @@ class ZoneRiskOut(BaseModel):
     analyst_review_status: str | None = None
     classification: ClassificationLevel
     score_id: str | None = None  # ZoneRiskScore PK — confidence-review target_id for zone_score
+    # GeoJSON; nullable because Zone.geometry is nullable on the model (a
+    # zone can exist before its boundary polygon is drawn — same reason
+    # DistrictSummary.geometry is nullable). Was never serialized out at
+    # all before this: the frontend's "Zone Mode" had no shape to render
+    # and fell back to recoloring the district-level dot only.
+    geometry: dict[str, Any] | None = None

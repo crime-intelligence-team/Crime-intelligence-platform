@@ -41,4 +41,5 @@ export interface ZoneRiskOut {
   analyst_review_status: string | null
   classification: ClassificationLevel
   score_id: string | null
+  geometry: Record<string, unknown> | null
 }

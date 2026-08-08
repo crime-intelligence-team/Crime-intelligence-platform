@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { MapContainer, TileLayer, CircleMarker, Tooltip } from 'react-leaflet'
+import { MapContainer, TileLayer, CircleMarker, Polygon, Tooltip } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import { X, AlertTriangle, MapPin, Activity, RefreshCw, ExternalLink, Navigation } from 'lucide-react'
 import { Button } from '../components/ui/Button'
@@ -35,6 +35,18 @@ function centroidOf(geometry: Record<string, unknown> | null | undefined): [numb
   }
   if (n === 0) return null
   return [sumLat / n, sumLng / n]
+}
+
+/** GeoJSON Polygon geometry -> Leaflet [lat, lng] ring for the outer
+ * boundary (holes, if any, are ignored — every zone polygon this
+ * codebase seeds/tests with is a single simple ring). */
+function polygonLatLngs(geometry: Record<string, unknown> | null | undefined): [number, number][] | null {
+  if (!geometry || typeof geometry !== 'object') return null
+  if (geometry['type'] !== 'Polygon') return null
+  const rings = geometry['coordinates'] as unknown as number[][][] | undefined
+  const outer = rings?.[0]
+  if (!outer || outer.length === 0) return null
+  return outer.map(([lng, lat]) => [lat, lng] as [number, number])
 }
 
 // ── Color helpers ──────────────────────────────────────────────────────────────
@@ -365,6 +377,32 @@ export default function GeoIntelligence() {
               zoomControl={false}
             >
               <TileLayer url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" />
+
+              {/* Zone choropleth: real zone polygons colored by risk score.
+                  Zones with no geometry (or unscored) contribute nothing here —
+                  the district dot below remains the click target regardless. */}
+              {mode === 'zone' && zones.map(z => {
+                const latlngs = polygonLatLngs(z.geometry)
+                if (!latlngs) return null
+                const color = scoreColor(z.score)
+                return (
+                  <Polygon
+                    key={z.id}
+                    positions={latlngs}
+                    pathOptions={{ color, fillColor: color, fillOpacity: 0.45, weight: 1.5 }}
+                    eventHandlers={{
+                      click: () => {
+                        const d = districts.find(dd => dd.id === z.district_id)
+                        if (d) { setSelectedZoneDistrict(d); setSelectedDistrict(null) }
+                      },
+                    }}
+                  >
+                    <Tooltip direction="center" sticky opacity={1}>
+                      <span>{z.name} — {z.score}/100</span>
+                    </Tooltip>
+                  </Polygon>
+                )
+              })}
 
               {mode !== 'network' && districts.map(d => {
                 const c = centroidOf(d.geometry)

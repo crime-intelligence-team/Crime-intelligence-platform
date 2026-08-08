@@ -11,6 +11,7 @@ from app.models.entities import Address, Officer, Zone, ZoneRiskScore
 from app.schemas.common import ClassificationLevel, Confidence, ConfidenceBand
 from app.schemas.map import ZoneRiskOut, ZoneTopFactor
 from app.services.district_service import get_accessible_district_ids
+from app.utils.geometry import geometry_to_geojson
 
 MIN_ADDRESS_FLOOR = 5
 REFERENCE_DENSITY_PER_KM2 = 1000.0
@@ -48,6 +49,7 @@ def _score_to_output(zone: Zone, score: int, band: ConfidenceBand, description: 
         recommended_interpretation=interpretation,
         analyst_review_status=None,
         classification=ClassificationLevel(zone.classification.value),
+        geometry=geometry_to_geojson(zone.geometry),
     )
 
 
@@ -173,4 +175,5 @@ def _row_to_output(zone: Zone, row: ZoneRiskScore) -> ZoneRiskOut:
         analyst_review_status=row.analyst_review_status,
         classification=ClassificationLevel(zone.classification.value),
         score_id=str(row.id),
+        geometry=geometry_to_geojson(zone.geometry),
     )
