@@ -37,8 +37,15 @@ def client() -> TestClient:
     return TestClient(app)
 
 
-def make_officer(username: str, role: Role, password: str = "Password1!") -> Officer:
-    """Idempotently create an MFA-disabled officer for API tests."""
+def make_officer(
+    username: str,
+    role: Role,
+    password: str = "Password1!",
+    manager_id=None,
+) -> Officer:
+    """Idempotently create an MFA-disabled officer for API tests.
+    manager_id (re)applies on every call, including to a pre-existing
+    officer, so module-scoped fixtures stay correct across reruns."""
     db = SessionLocal()
     try:
         officer = db.query(Officer).filter(Officer.username == username).first()
@@ -49,10 +56,15 @@ def make_officer(username: str, role: Role, password: str = "Password1!") -> Off
                 hashed_password=hash_password(password),
                 full_name=f"IT {username}",
                 role=role,
+                manager_id=manager_id,
                 mfa_enabled=0,
                 is_active=1,
             )
             db.add(officer)
+            db.commit()
+            db.refresh(officer)
+        elif officer.manager_id != manager_id:
+            officer.manager_id = manager_id
             db.commit()
             db.refresh(officer)
         return officer

@@ -14,6 +14,7 @@ from app.routers import (
     entity_resolution,
     map as map_router,
     network,
+    officers,
     redactions,
     search,
 )
@@ -58,6 +59,7 @@ app.include_router(access_exceptions.router)
 app.include_router(entity_resolution.router)
 app.include_router(admin.router)
 app.include_router(search.router)
+app.include_router(officers.router)
 
 
 @app.get("/health")

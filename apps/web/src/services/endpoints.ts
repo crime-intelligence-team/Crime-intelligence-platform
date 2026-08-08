@@ -41,6 +41,8 @@ import type {
   MfaVerifyResponse,
   NoteCreate,
   NoteSummary,
+  OfficerManagerUpdate,
+  OfficerSummary,
   PaginatedResponse,
   PriorityEntity,
   RedactionPolicyCreate,
@@ -155,6 +157,13 @@ export const adminApi = {
     post<ConfidenceReviewResponse>(`/admin/confidence-review/${id}/decision`, payload),
   audit: (params: { page?: number; page_size?: number; action?: string; actor_id?: string; q?: string } = {}) =>
     get<PaginatedResponse<AuditLogEntry>>('/admin/audit', params),
+}
+
+// ─── Officers ─────────────────────────────────────────────────────────────────
+export const officersApi = {
+  list: () => get<OfficerSummary[]>('/officers'),
+  setManager: (officerId: string, payload: OfficerManagerUpdate) =>
+    patch<OfficerSummary>(`/officers/${officerId}/manager`, payload),
 }
 
 // ─── Global Search ────────────────────────────────────────────────────────────

@@ -35,6 +35,11 @@ class Officer(Base, TimestampMixin):
     role = Column(Enum(Role, name="officer_role"), nullable=False)
     unit = Column(String, nullable=True)
     home_district_id = Column(UUID(as_uuid=True), ForeignKey("districts.id"), nullable=True)
+    # Real officer hierarchy (006 §4 / 999 §2.3, previously a role-collapse:
+    # supervisory_chain note visibility just checked officer.role, not real
+    # per-officer ancestry). ON DELETE SET NULL: a removed/reassigned
+    # manager frees their reports rather than cascade-deleting them.
+    manager_id = Column(UUID(as_uuid=True), ForeignKey("officers.id", ondelete="SET NULL"), nullable=True)
     mfa_enabled = Column(Integer, default=1)  # 1/0 instead of bool for simple SQLite/PG parity
     totp_secret = Column(String, nullable=True)  # base32 RFC 4648, set at enrollment (TOTP component)
     totp_enrolled_at = Column(DateTime(timezone=True), nullable=True)

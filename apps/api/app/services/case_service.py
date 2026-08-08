@@ -44,6 +44,7 @@ from app.schemas.cases import (
 )
 from app.services.district_service import get_accessible_district_ids
 from app.services.access_exception_service import exempt_case_ids
+from app.services.officer_service import get_subordinate_officer_ids
 
 CASE_NUMBER_RE = re.compile(r"^[A-Z0-9-]{3,32}$")
 
@@ -515,19 +516,29 @@ def _active_team_officer_ids(db: Session, case_id: UUID) -> set[UUID]:
 
 
 def _note_visible(
-    note: Note, case: Case, officer: Officer, team_officer_ids: set[UUID]
+    note: Note,
+    case: Case,
+    officer: Officer,
+    team_officer_ids: set[UUID],
+    subordinate_officer_ids: set[UUID],
 ) -> bool:
     """Visibility-tier enforcement (Phase 5 component 3; case_team widened
-    to real membership per 006 §4 / 999 §2.2). Callers must already have
-    passed the case-visible gate and the note tier gate; this evaluates the
+    to real membership per 006 §4 / 999 §2.2; supervisory_chain widened to
+    real ancestry per 006 §4 / 999 §2.3). Callers must already have passed
+    the case-visible gate and the note tier gate; this evaluates the
     visibility column only.
 
     private_author      -> the note's own author
     case_team           -> case lead officer OR note author OR an active
                            case_team_members row (team_officer_ids, computed
                            once per case by the caller — see _visible_notes)
-    supervisory_chain   -> SUPERVISOR/ADMINISTRATOR role (no officer
-                           hierarchy exists; weaker than a true chain)
+    supervisory_chain   -> ADMINISTRATOR (org-wide oversight, same as every
+                           other unrestricted-role check in this codebase)
+                           OR a SUPERVISOR who is a transitive manager of the
+                           note's author (subordinate_officer_ids, computed
+                           once per viewer by the caller — real per-officer
+                           ancestry via Officer.manager_id, replacing the
+                           old officer.role-only check)
     inter_unit_approved -> anyone who passed the gates (widest tier; the
                            AccessExceptionRequest workflow is stubbed and
                            links to cases, not notes)
@@ -542,7 +553,9 @@ def _note_visible(
             or officer.id in team_officer_ids
         )
     if note.visibility == Note.VISIBILITY_SUPERVISORY_CHAIN:
-        return officer.role in (Role.SUPERVISOR, Role.ADMINISTRATOR)
+        return officer.role == Role.ADMINISTRATOR or (
+            officer.role == Role.SUPERVISOR and note.author_id in subordinate_officer_ids
+        )
     if note.visibility == Note.VISIBILITY_INTER_UNIT:
         return True
     return False
@@ -574,8 +587,15 @@ def _visible_notes(db: Session, case: Case, officer: Officer, case_id: UUID) -> 
         )
     ).scalars().all()
     team_officer_ids = _active_team_officer_ids(db, case_id)
+    subordinate_officer_ids = (
+        get_subordinate_officer_ids(db, officer.id) if officer.role == Role.SUPERVISOR else set()
+    )
     return sorted(
-        (n for n in rows if _note_visible(n, case, officer, team_officer_ids)),
+        (
+            n
+            for n in rows
+            if _note_visible(n, case, officer, team_officer_ids, subordinate_officer_ids)
+        ),
         key=lambda n: (n.created_at.isoformat() if n.created_at else "", str(n.id)),
         reverse=True,
     )
