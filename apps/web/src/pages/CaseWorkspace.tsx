@@ -86,6 +86,7 @@ function CreateCaseModal({ onClose, onCreated }: { onClose: () => void; onCreate
   const [summary, setSummary] = useState('')
   const [classification, setClassification] = useState<ClassificationLevel>('restricted_operational')
   const [districtId, setDistrictId] = useState('')
+  const [addressId, setAddressId] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -102,6 +103,7 @@ function CreateCaseModal({ onClose, onCreated }: { onClose: () => void; onCreate
         summary: summary || null,
         classification,
         district_id: districtId,
+        address_id: addressId.trim() || null,
       })
       onCreated(created.id)
     } catch (e) {
@@ -158,6 +160,13 @@ function CreateCaseModal({ onClose, onCreated }: { onClose: () => void; onCreate
                 {CLASSIFICATIONS.map(c => <option key={c} value={c}>{classificationLabel[c]}</option>)}
               </select>
             </div>
+          </div>
+
+          <div>
+            <label className={labelCls}>Address ID (optional)</label>
+            <input value={addressId} onChange={e => setAddressId(e.target.value)} placeholder="Linked incident address UUID"
+              className={inputCls} />
+            <p className="text-[10px] text-text-tertiary mt-1">Zone is resolved automatically from the address's location</p>
           </div>
 
           {error && <p className="text-xs text-severity-critical bg-severity-tint-critical/30 border border-severity-critical/30 rounded-md px-3 py-2">{error}</p>}

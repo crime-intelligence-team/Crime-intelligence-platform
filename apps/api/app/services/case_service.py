@@ -22,13 +22,14 @@ import uuid
 from datetime import datetime, timezone
 from uuid import UUID
 
+from geoalchemy2 import functions as geo_func
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.classification import ROLE_MAX_CLASSIFICATION, classification_filter
 from app.models.base import CLASSIFICATION_RANK
 from app.models.base import ClassificationLevel as ModelClassificationLevel
-from app.models.entities import Case, District, Note, Officer, Role
+from app.models.entities import Address, Case, District, Note, Officer, Role, Zone
 from app.models.governance import AuditLogEntry, CaseTeamMember
 from app.schemas.common import ClassificationLevel
 from app.schemas.cases import (
@@ -61,6 +62,10 @@ class CaseNumberTakenError(Exception):
 
 class DistrictNotFoundError(Exception):
     """district_id does not reference a real district (422 at the router)."""
+
+
+class AddressNotFoundError(Exception):
+    """address_id does not reference a real address (422 at the router)."""
 
 
 class DistrictNotInJurisdictionError(Exception):
@@ -133,11 +138,31 @@ def _to_summary(case: Case) -> CaseSummary:
     )
 
 
-def _to_detail(case: Case) -> CaseDetail:
+def _resolve_zone_id(db: Session, address_id: UUID | None) -> UUID | None:
+    """Case->zone (999 §2.1 / 006 §3) is derived, not stored: the zone whose
+    polygon spatially contains the case's address, resolved fresh on every
+    read via ST_Contains — the same containment primitive risk_service uses
+    for address density. None whenever there's no address, the address has
+    no geocoded point, or no zone polygon contains it (all real, non-error
+    states, not failures)."""
+    if address_id is None:
+        return None
+    address = db.get(Address, address_id)
+    if address is None or address.geocoded_point is None:
+        return None
+    return db.execute(
+        select(Zone.id).where(geo_func.ST_Contains(Zone.geometry, address.geocoded_point))
+    ).scalars().first()
+
+
+def _to_detail(db: Session, case: Case) -> CaseDetail:
+    zone_id = _resolve_zone_id(db, case.address_id)
     return CaseDetail(
         **_to_summary(case).model_dump(),
         summary=case.summary,
         lead_officer_id=str(case.lead_officer_id) if case.lead_officer_id else None,
+        address_id=str(case.address_id) if case.address_id else None,
+        zone_id=str(zone_id) if zone_id else None,
     )
 
 
@@ -188,7 +213,7 @@ def get_case(
             exempt_case_ids=exempt_case_ids(db, officer),
         ).where(Case.id == case_id)
     ).scalar_one_or_none()
-    return _to_detail(case) if case is not None else None
+    return _to_detail(db, case) if case is not None else None
 
 
 def create_case(
@@ -202,6 +227,9 @@ def create_case(
     - status: vocabulary {open, closed}, default open -> 422 otherwise
     - district_id: required; must exist (422) and lie within the creator's
       accessible districts (422)
+    - address_id: optional; must exist if given (422) — no jurisdiction
+      check against it (district_id is still the authoritative scope; an
+      address is incident-location detail, not an access boundary)
     - classification: default RESTRICTED_OPERATIONAL; ceiling = the
       creator's own ROLE_MAX_CLASSIFICATION (422) — a creator must never
       file a case they themselves cannot see
@@ -229,6 +257,11 @@ def create_case(
     if accessible is not None and district.id not in accessible:
         raise DistrictNotInJurisdictionError(str(district.id))
 
+    if payload.address_id is not None:
+        address = db.get(Address, payload.address_id)
+        if address is None:
+            raise AddressNotFoundError(str(payload.address_id))
+
     max_tier = ROLE_MAX_CLASSIFICATION[officer.role]
     if (
         CLASSIFICATION_RANK[ModelClassificationLevel(payload.classification.value)]
@@ -242,13 +275,14 @@ def create_case(
         summary=payload.summary,
         status=payload.status,
         district_id=district.id,
+        address_id=payload.address_id,
         lead_officer_id=officer.id,
         classification=ModelClassificationLevel(payload.classification.value),
     )
     db.add(case)
     db.commit()
     db.refresh(case)
-    return _to_detail(case)
+    return _to_detail(db, case)
 
 
 def update_case_status(
@@ -301,7 +335,7 @@ def update_case_status(
         )
         db.commit()
         db.refresh(case)
-    return _to_detail(case)
+    return _to_detail(db, case)
 
 
 def _to_team_member_out(officer: Officer, is_lead: bool, added_at) -> CaseTeamMemberOut:
@@ -677,7 +711,7 @@ def export_case(
             role=officer.role.value,
         ),
         classification=ClassificationLevel(highest.value),
-        case=_to_detail(case),
+        case=_to_detail(db, case),
         notes=note_summaries,
     )
 

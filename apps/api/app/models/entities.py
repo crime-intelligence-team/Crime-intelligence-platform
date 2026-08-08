@@ -162,6 +162,15 @@ class Case(Base, ClassificationMixin, ProvenanceMixin, TimestampMixin):
     status = Column(String, nullable=False, default="open")
     district_id = Column(UUID(as_uuid=True), ForeignKey("districts.id"), nullable=True)
     lead_officer_id = Column(UUID(as_uuid=True), ForeignKey("officers.id"), nullable=True)
+    # Case<->zone linkage (999 §2.1 / 006 §3, previously never built): a case
+    # links to an Address, and the zone is DERIVED by spatial containment at
+    # read time (case_service._resolve_zone_id), not stored — no zone_id
+    # column exists here or on Address. ON DELETE SET NULL: an address
+    # record disappearing should never cascade-delete the case that
+    # referenced it.
+    address_id = Column(
+        UUID(as_uuid=True), ForeignKey("addresses.id", ondelete="SET NULL"), nullable=True
+    )
 
 
 class Note(Base, ClassificationMixin, TimestampMixin):

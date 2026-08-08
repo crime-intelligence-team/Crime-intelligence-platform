@@ -293,6 +293,15 @@ export default function CaseDetail() {
             <p className="section-label mb-1">Classification</p>
             <p className="text-xs font-medium text-sentinel-100">{classificationLabel[c.classification] ?? c.classification}</p>
           </div>
+          {c.address_id && (
+            <div>
+              <p className="section-label mb-1">Linked Address</p>
+              <p className="font-mono text-[11px] text-sentinel-300">{c.address_id.slice(0, 8)}</p>
+              <p className="text-[10px] text-sentinel-500 mt-0.5">
+                Zone: {c.zone_id ? c.zone_id.slice(0, 8) : 'not in a scored zone'}
+              </p>
+            </div>
+          )}
           <div>
             <p className="section-label mb-1">Lead Officer</p>
             <p className="font-mono text-[11px] text-sentinel-300">{c.lead_officer_id ? c.lead_officer_id.slice(0, 8) : 'Unassigned'}</p>

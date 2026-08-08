@@ -110,6 +110,16 @@ def create_case(
                 }
             },
         )
+    except case_service.AddressNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": {
+                    "code": "address_not_found",
+                    "message": "address_id does not reference a real address",
+                }
+            },
+        )
     except case_service.ClassificationExceedsClearanceError:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

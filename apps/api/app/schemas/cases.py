@@ -20,6 +20,7 @@ class CaseCreate(BaseModel):
     title: str
     summary: str | None = None
     district_id: UUID
+    address_id: UUID | None = None
     status: str = "open"
     classification: ClassificationLevel = ClassificationLevel.RESTRICTED_OPERATIONAL
 
@@ -41,6 +42,12 @@ class CaseDetail(CaseSummary):
 
     summary: RedactedField | str | None
     lead_officer_id: str | None
+    address_id: str | None
+    # Derived, not stored (999 §2.1) — the zone containing address_id's
+    # geocoded point, resolved fresh on every read (case_service.
+    # _resolve_zone_id). None when there's no address, no geocoded point,
+    # or no zone polygon contains the point.
+    zone_id: str | None
 
 
 class CaseStatusUpdate(BaseModel):

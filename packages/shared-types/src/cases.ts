@@ -8,6 +8,7 @@ export interface CaseCreate {
   title: string
   summary?: string | null
   district_id: string
+  address_id?: string | null
   status?: string
   classification?: ClassificationLevel
 }
@@ -25,6 +26,8 @@ export interface CaseSummary {
 export interface CaseDetail extends CaseSummary {
   summary: RedactedField | string | null
   lead_officer_id: string | null
+  address_id: string | null
+  zone_id: string | null
 }
 
 export interface CaseTeamMemberOut {
