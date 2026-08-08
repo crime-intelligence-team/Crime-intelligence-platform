@@ -8,7 +8,7 @@ export interface DistrictSummary {
   name: string
   code: string
   classification: ClassificationLevel
-  geometry: Record<string, unknown>
+  geometry: Record<string, unknown> | null
 }
 
 export interface DistrictDetail extends DistrictSummary {

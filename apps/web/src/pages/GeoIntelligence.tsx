@@ -14,7 +14,7 @@ type MapMode = 'default' | 'zone' | 'network'
 
 // ── Geometry helpers ───────────────────────────────────────────────────────────
 /** GeoJSON geometry (Polygon/MultiPolygon) → [lat, lng] centroid. */
-function centroidOf(geometry: Record<string, unknown> | undefined): [number, number] | null {
+function centroidOf(geometry: Record<string, unknown> | null | undefined): [number, number] | null {
   if (!geometry || typeof geometry !== 'object') return null
   const type = geometry['type']
   const coords = geometry['coordinates'] as unknown

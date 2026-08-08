@@ -10,7 +10,13 @@ class DistrictSummary(BaseModel):
     name: str
     code: str
     classification: ClassificationLevel
-    geometry: dict[str, Any]  # GeoJSON
+    # GeoJSON; nullable because District.geometry is nullable on the model
+    # (a district can exist before its boundary polygon is drawn) —
+    # geometry_to_geojson already returns None for that case, but this
+    # field was typed as required dict, so any geometry-less district 500'd
+    # the entire /districts list for every officer (found via live browser
+    # testing, not by any single feature's own test suite).
+    geometry: dict[str, Any] | None
 
 
 class DistrictDetail(DistrictSummary):
