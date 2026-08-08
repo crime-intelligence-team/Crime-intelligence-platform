@@ -297,7 +297,17 @@ export function NetworkGraphView() {
                 if (e.target === cy) setSelectedId(null)
               })
             }}
-            layout={{ name: 'cose', animate: true, padding: 40 }}
+            // animate: false (not true): cose's animated layout self-reschedules
+            // via requestAnimationFrame until it converges. cy.destroy() on
+            // unmount (react-cytoscapejs's componentWillUnmount) doesn't cancel
+            // an already-queued frame — the next one still fires, tries to
+            // notify the now-null renderer, and throws
+            // "Cannot read properties of null (reading 'notify')". animate:
+            // false makes cytoscape compute final positions synchronously
+            // instead of scheduling frames, which removes that code path
+            // entirely rather than racing it. Trade-off: nodes settle into
+            // place instantly instead of animating in.
+            layout={{ name: 'cose', animate: false, padding: 40 }}
             userZoomingEnabled
             userPanningEnabled
           />
