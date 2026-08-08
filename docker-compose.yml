@@ -54,8 +54,10 @@ services:
         condition: service_healthy
     volumes:
       - ./apps/api:/app:Z
+      - attachment_storage:/app/data/attachments
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
 volumes:
   postgres_data:
   neo4j_data:
+  attachment_storage:

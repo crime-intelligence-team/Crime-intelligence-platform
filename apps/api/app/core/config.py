@@ -30,9 +30,26 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     CORS_ORIGINS: str = "http://localhost:3000"
 
+    # Attachments (006 §1 / 999 §2.12): case-scoped file uploads, local-disk
+    # storage — no S3/MinIO service. Files live under ATTACHMENT_STORAGE_PATH,
+    # addressed by the attachment's own id (see app.models.entities.Attachment).
+    ATTACHMENT_STORAGE_PATH: str = "/app/data/attachments"
+    ATTACHMENT_MAX_SIZE_BYTES: int = 26_214_400  # 25 MiB
+    ATTACHMENT_ALLOWED_CONTENT_TYPES: str = (
+        "application/pdf,image/jpeg,image/png,image/gif,image/webp,"
+        "text/plain,application/msword,"
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document,"
+        "application/vnd.ms-excel,"
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
+
+    @property
+    def attachment_allowed_content_types_list(self) -> list[str]:
+        return [t.strip() for t in self.ATTACHMENT_ALLOWED_CONTENT_TYPES.split(",") if t.strip()]
 
 
 settings = Settings()

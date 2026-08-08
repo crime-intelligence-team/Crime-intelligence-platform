@@ -78,6 +78,20 @@ class CaseTeamMemberOut(BaseModel):
     added_at: str | None
 
 
+class AttachmentSummary(BaseModel):
+    """One case attachment (006 §1 / 999 §2.12). filename is display-only
+    (sanitized, never used to address storage — see Attachment model)."""
+
+    id: str
+    case_id: str
+    filename: str
+    content_type: str
+    size_bytes: int
+    classification: ClassificationLevel
+    uploaded_by_id: str
+    created_at: str | None
+
+
 class NoteCreate(BaseModel):
     body: str
     visibility: str = "case_team"

@@ -40,6 +40,17 @@ export interface CaseTeamMemberOut {
   added_at: string | null
 }
 
+export interface AttachmentSummary {
+  id: string
+  case_id: string
+  filename: string
+  content_type: string
+  size_bytes: number
+  classification: ClassificationLevel
+  uploaded_by_id: string
+  created_at: string | null
+}
+
 export interface NoteCreate {
   body: string
   visibility?: string

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { AlertTriangle, Lock, Send, X, FileText, MapPin, Shield, User, MessageSquare, Loader2, Users, UserMinus, UserPlus } from 'lucide-react'
+import { AlertTriangle, Lock, Send, X, FileText, MapPin, Shield, User, MessageSquare, Loader2, Users, UserMinus, UserPlus, Paperclip, Download, Upload } from 'lucide-react'
 import { Button } from '../components/ui/Button'
 import { StepUpModal } from '../components/ui/StepUpModal'
 import { useApi } from '../hooks/useApi'
@@ -13,6 +13,12 @@ function fieldText(v: string | RedactedField | null | undefined): string {
   if (v == null) return '—'
   if (typeof v === 'object' && 'redacted' in v) return `[REDACTED — ${v.reason.replace('_', ' ')}]`
   return v
+}
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`
 }
 
 const classificationPill: Record<string, string> = {
@@ -50,6 +56,8 @@ export default function CaseDetail() {
   const [teamInput, setTeamInput] = useState('')
   const [teamActionError, setTeamActionError] = useState<string | null>(null)
   const [teamActionBusy, setTeamActionBusy] = useState(false)
+  const [uploadingAttachment, setUploadingAttachment] = useState(false)
+  const [attachmentError, setAttachmentError] = useState<string | null>(null)
 
   const { data: c, loading, error, refetch } = useApi(
     () => (id ? casesApi.byId(id) : Promise.resolve(null)),
@@ -61,6 +69,10 @@ export default function CaseDetail() {
   )
   const { data: team, refetch: refetchTeam } = useApi(
     () => (id ? casesApi.team(id) : Promise.resolve(null)),
+    [id],
+  )
+  const { data: attachments, refetch: refetchAttachments } = useApi(
+    () => (id ? casesApi.attachments(id) : Promise.resolve(null)),
     [id],
   )
   const { data: districtPage } = useApi(() => mapApi.districts())
@@ -118,6 +130,38 @@ export default function CaseDetail() {
       setTeamActionError(e instanceof ApiError ? e.message : 'Failed to remove team member')
     } finally {
       setTeamActionBusy(false)
+    }
+  }
+
+  async function handleUploadAttachment(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!id || !file) return
+    setUploadingAttachment(true)
+    setAttachmentError(null)
+    try {
+      await casesApi.uploadAttachment(id, file)
+      refetchAttachments()
+    } catch (err) {
+      setAttachmentError(err instanceof ApiError ? err.message : 'Failed to upload attachment')
+    } finally {
+      setUploadingAttachment(false)
+    }
+  }
+
+  async function handleDownloadAttachment(attachmentId: string, filename: string) {
+    if (!id) return
+    setAttachmentError(null)
+    try {
+      const { blob, filename: serverFilename } = await casesApi.downloadAttachment(id, attachmentId)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = serverFilename ?? filename
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      setAttachmentError(err instanceof ApiError ? err.message : 'Failed to download attachment')
     }
   }
 
@@ -252,6 +296,43 @@ export default function CaseDetail() {
             >
               {submittingNote ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
             </button>
+          </div>
+        </div>
+
+        {/* Attachments */}
+        <div className="bg-surface-card border border-surface-border rounded-xl overflow-hidden">
+          <div className="flex items-center gap-2 px-5 py-3.5 border-b border-surface-border">
+            <Paperclip className="w-4 h-4 text-sentinel-400" />
+            <h2 className="text-sm font-semibold text-sentinel-100">Attachments</h2>
+            <span className="text-[10px] text-sentinel-500 ml-auto">{(attachments ?? []).length} files</span>
+          </div>
+          <div className="px-5 py-4 space-y-2">
+            {(attachments ?? []).length === 0 && (
+              <p className="text-xs text-sentinel-500">No attachments uploaded yet.</p>
+            )}
+            {(attachments ?? []).map(a => (
+              <div key={a.id} className="flex items-center justify-between gap-2 bg-surface-raised border border-surface-border rounded-lg px-3 py-2">
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-sentinel-100 truncate">{a.filename}</p>
+                  <p className="text-[10px] text-sentinel-500">
+                    {formatBytes(a.size_bytes)} · {a.created_at ? new Date(a.created_at).toLocaleString() : '—'}
+                  </p>
+                </div>
+                <button
+                  onClick={() => handleDownloadAttachment(a.id, a.filename)}
+                  className="p-1.5 rounded-md text-sentinel-400 hover:text-accent-blue transition-colors shrink-0"
+                  title="Download"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))}
+            <label className={`mt-1 flex items-center justify-center gap-2 border border-dashed border-surface-border rounded-lg px-3 py-2.5 text-xs text-sentinel-400 cursor-pointer hover:border-accent-blue/40 hover:text-accent-blue transition-colors ${uploadingAttachment ? 'opacity-50 pointer-events-none' : ''}`}>
+              {uploadingAttachment ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+              {uploadingAttachment ? 'Uploading…' : 'Upload a file'}
+              <input type="file" className="hidden" onChange={handleUploadAttachment} disabled={uploadingAttachment} />
+            </label>
+            {attachmentError && <p className="text-[10px] text-severity-critical mt-1">{attachmentError}</p>}
           </div>
         </div>
 

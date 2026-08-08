@@ -1,12 +1,14 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_officer, require_permissions, require_step_up_auth
 from app.models.entities import Case, Note, Officer
 from app.schemas.cases import (
+    AttachmentSummary,
     CaseCreate,
     CaseDetail,
     CaseStatusUpdate,
@@ -18,8 +20,8 @@ from app.schemas.cases import (
     NoteSummary,
     TeamMemberAdd,
 )
-from app.schemas.common import PaginatedResponse
-from app.services import case_service, redaction_service
+from app.schemas.common import ClassificationLevel, PaginatedResponse
+from app.services import attachment_service, case_service, redaction_service
 
 router = APIRouter(prefix="/api/v1/cases", tags=["cases"])
 
@@ -478,13 +480,134 @@ def add_note(
     return result
 
 
-@router.post("/{case_id}/attachments")
-def add_attachment(
+@router.post(
+    "/{case_id}/attachments", response_model=AttachmentSummary, status_code=status.HTTP_201_CREATED
+)
+async def add_attachment(
     case_id: str,
+    file: UploadFile = File(...),
+    classification: str = Form(ClassificationLevel.RESTRICTED_OPERATIONAL.value),
     officer: Officer = Depends(get_current_officer),
     _pm: Officer = Depends(require_permissions("case:write")),
+    db: Session = Depends(get_db),
 ):
-    return {"id": "stub-attachment-id", "case_id": case_id, "_stub": True}
+    """006 §1 / 999 §2.12: replaces the prior stub (no auth-visibility
+    gate, no storage). Local-disk storage — see attachment_service."""
+    case_uuid = _case_uuid_or_422(case_id)
+    content = await file.read()
+    try:
+        result = attachment_service.create_attachment(
+            db=db,
+            officer=officer,
+            case_id=case_uuid,
+            filename=file.filename or "unnamed",
+            content_type=file.content_type or "application/octet-stream",
+            content=content,
+            classification=classification,
+        )
+    except attachment_service.InvalidClassificationError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": {
+                    "code": "invalid_classification",
+                    "message": "classification is not a valid tier",
+                }
+            },
+        )
+    except attachment_service.ClassificationExceedsClearanceError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": {
+                    "code": "classification_exceeds_clearance",
+                    "message": "Attachment classification exceeds this officer's clearance",
+                }
+            },
+        )
+    except attachment_service.UnsupportedContentTypeError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": {
+                    "code": "unsupported_content_type",
+                    "message": "File type is not permitted",
+                }
+            },
+        )
+    except attachment_service.AttachmentTooLargeError:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail={
+                "error": {
+                    "code": "attachment_too_large",
+                    "message": "File exceeds the maximum allowed size",
+                }
+            },
+        )
+    if result is None:
+        raise _case_not_found()
+    return result
+
+
+@router.get("/{case_id}/attachments", response_model=list[AttachmentSummary])
+def list_attachments(
+    case_id: str,
+    officer: Officer = Depends(get_current_officer),
+    _pm: Officer = Depends(require_permissions("case:read")),
+    db: Session = Depends(get_db),
+):
+    result = attachment_service.list_attachments(
+        db=db, officer=officer, case_id=_case_uuid_or_422(case_id)
+    )
+    if result is None:
+        raise _case_not_found()
+    return result
+
+
+@router.get("/{case_id}/attachments/{attachment_id}/download")
+def download_attachment(
+    case_id: str,
+    attachment_id: str,
+    request: Request,
+    officer: Officer = Depends(get_current_officer),
+    _pm: Officer = Depends(require_permissions("case:read")),
+    db: Session = Depends(get_db),
+):
+    try:
+        attachment_uuid = UUID(attachment_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": {
+                    "code": "invalid_uuid",
+                    "message": "Attachment ID is not a valid UUID",
+                }
+            },
+        )
+    ip_address = request.client.host if request.client else None
+    attachment = attachment_service.get_attachment_for_download(
+        db=db,
+        officer=officer,
+        case_id=_case_uuid_or_422(case_id),
+        attachment_id=attachment_uuid,
+        ip_address=ip_address,
+    )
+    path = attachment_service.storage_file_path(attachment.id) if attachment else None
+    if attachment is None or not path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "error": {
+                    "code": "attachment_not_found",
+                    "message": "Attachment not found or not accessible to this officer",
+                }
+            },
+        )
+    return FileResponse(
+        path=path, media_type=attachment.content_type, filename=attachment.filename
+    )
 
 
 @router.post("/{case_id}/export", response_model=ExportResponse)

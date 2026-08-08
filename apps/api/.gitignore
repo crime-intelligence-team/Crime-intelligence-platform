@@ -3,6 +3,10 @@
 .env.*
 !.env.example
 
+# Local-disk attachment storage (docker-compose mounts a named volume over
+# this in the container; without compose, uploads land here on the host)
+data/attachments/
+
 # Python
 __pycache__/
 *.py[cod]

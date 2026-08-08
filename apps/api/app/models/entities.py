@@ -200,6 +200,28 @@ class Note(Base, ClassificationMixin, TimestampMixin):
     finding_state = Column(String, nullable=True)  # hypothesis | confirmed | disputed
 
 
+class Attachment(Base, ClassificationMixin, TimestampMixin):
+    """Case-scoped file upload (006 §1 / 999 §2.12: the PRD never mentions
+    attachments — "zero PRD occurrences" — so no design was ever proposed;
+    this is deliberate and minimal, not a spec implementation). Local-disk
+    storage (no S3/MinIO): attachment_service addresses the file on disk
+    by this row's own server-generated id, under settings.
+    ATTACHMENT_STORAGE_PATH — never by `filename`, which is caller-supplied,
+    sanitized, and used ONLY for display and the download Content-
+    Disposition header. No path is derived from user input anywhere,
+    which is the path-traversal hardening 006 §1 flagged as needed for a
+    faithful implementation."""
+
+    __tablename__ = "attachments"
+
+    id = uuid_pk_column()
+    case_id = Column(UUID(as_uuid=True), ForeignKey("cases.id"), nullable=False)
+    uploaded_by_id = Column(UUID(as_uuid=True), ForeignKey("officers.id"), nullable=False)
+    filename = Column(String, nullable=False)
+    content_type = Column(String, nullable=False)
+    size_bytes = Column(Integer, nullable=False)
+
+
 class RelationshipEdgeRef(Base, ClassificationMixin, TimestampMixin):
     """
     Mirrored reference to a Neo4j relationship edge, per brief section 4:

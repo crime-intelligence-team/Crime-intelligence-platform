@@ -10,6 +10,7 @@ import type {
   AccessExceptionRequestCreate,
   AccessExceptionRequestResponse,
   Alert,
+  AttachmentSummary,
   AuditLogEntry,
   CaseCreate,
   CaseDetail,
@@ -54,7 +55,7 @@ import type {
   ZoneRiskOut,
 } from '@cip/shared-types'
 
-import { get, post, patch, del } from './client'
+import { get, post, patch, del, postForm, downloadFile } from './client'
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 export const authApi = {
@@ -113,6 +114,15 @@ export const casesApi = {
     post<CaseTeamMemberOut>(`/cases/${caseId}/team`, { officer_id: officerId }),
   removeTeamMember: (caseId: string, officerId: string) =>
     del<CaseTeamMemberOut>(`/cases/${caseId}/team/${officerId}`),
+  attachments: (caseId: string) => get<AttachmentSummary[]>(`/cases/${caseId}/attachments`),
+  uploadAttachment: (caseId: string, file: File, classification?: string) => {
+    const form = new FormData()
+    form.append('file', file)
+    if (classification) form.append('classification', classification)
+    return postForm<AttachmentSummary>(`/cases/${caseId}/attachments`, form)
+  },
+  downloadAttachment: (caseId: string, attachmentId: string) =>
+    downloadFile(`/cases/${caseId}/attachments/${attachmentId}/download`),
 }
 
 // ─── Alerts ───────────────────────────────────────────────────────────────────

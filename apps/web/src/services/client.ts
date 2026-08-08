@@ -65,9 +65,12 @@ interface RequestOptions extends Omit<RequestInit, 'body'> {
   body?: unknown
 }
 
-export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+/** Shared fetch + auth-header + error-envelope handling for both the JSON
+ * (request) and binary (downloadFile) response paths. */
+async function _authorizedFetch(path: string, options: RequestOptions): Promise<Response> {
   const headers = new Headers(options.headers)
-  if (options.body !== undefined) {
+  const isFormData = options.body instanceof FormData
+  if (options.body !== undefined && !isFormData) {
     headers.set('Content-Type', 'application/json')
   }
   if (accessToken) headers.set('Authorization', `Bearer ${accessToken}`)
@@ -78,7 +81,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     res = await fetch(`${API_BASE}${path}`, {
       ...options,
       headers,
-      body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+      body: options.body === undefined ? undefined : isFormData ? (options.body as FormData) : JSON.stringify(options.body),
     })
   } catch (err) {
     throw new ApiError(0, 'network_error', 'Unable to reach the API server', String(err))
@@ -107,8 +110,24 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     throw new ApiError(res.status, 'http_error', `Request failed with status ${res.status}`, null)
   }
 
+  return res
+}
+
+export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const res = await _authorizedFetch(path, options)
   if (res.status === 204) return undefined as T
   return (await res.json()) as T
+}
+
+/** Streams a binary response (e.g. attachment download) as a Blob, paired
+ * with the filename from Content-Disposition when the server sends one. */
+export async function downloadFile(
+  path: string,
+): Promise<{ blob: Blob; filename: string | null }> {
+  const res = await _authorizedFetch(path, {})
+  const disposition = res.headers.get('Content-Disposition') ?? ''
+  const match = /filename="?([^";]+)"?/.exec(disposition)
+  return { blob: await res.blob(), filename: match ? match[1] : null }
 }
 
 export function get<T>(
@@ -137,4 +156,8 @@ export function patch<T>(path: string, body?: unknown): Promise<T> {
 
 export function del<T>(path: string): Promise<T> {
   return request<T>(path, { method: 'DELETE' })
+}
+
+export function postForm<T>(path: string, form: FormData): Promise<T> {
+  return request<T>(path, { method: 'POST', body: form })
 }
