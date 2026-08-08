@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { MapContainer, TileLayer, CircleMarker, Polygon, Tooltip } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
-import { X, AlertTriangle, MapPin, Activity, RefreshCw, ExternalLink, Navigation } from 'lucide-react'
+import { X, AlertTriangle, MapPin, RefreshCw, ExternalLink, Navigation } from 'lucide-react'
 import { Button } from '../components/ui/Button'
 import { ErrorBoundary } from '../components/ui/ErrorBoundary'
 import { SkeletonMap } from '../components/ui/Skeletons'
@@ -10,7 +10,7 @@ import { useApi } from '../hooks/useApi'
 import { mapApi } from '../services/endpoints'
 import type { DistrictQuickSummary, DistrictSummary, ZoneRiskOut } from '@cip/shared-types'
 
-type MapMode = 'default' | 'zone' | 'network'
+type MapMode = 'default' | 'zone'
 
 // ── Geometry helpers ───────────────────────────────────────────────────────────
 /** GeoJSON geometry (Polygon/MultiPolygon) → [lat, lng] centroid. */
@@ -249,24 +249,6 @@ function ZoneInspector({ district, zones, onClose, onRunScoring, scoring }: {
   )
 }
 
-// ── Network panel ──────────────────────────────────────────────────────────────
-function NetworkPreview({ onClose }: { onClose: () => void }) {
-  const navigate = useNavigate()
-  return (
-    <GeoPanel>
-      <GeoPanelHeader eyebrow="Network Overview" icon={Activity} title="Entity Network" onClose={onClose} />
-
-      <GeoPanelCallout>
-        The entity relationship graph has moved to the dedicated network workspace, where it can be built from live entity searches and relationship data.
-      </GeoPanelCallout>
-
-      <Button variant="primary" size="md" onClick={() => navigate('/network')}>
-        Open Network Workspace <ExternalLink className="w-3.5 h-3.5" />
-      </Button>
-    </GeoPanel>
-  )
-}
-
 // ── Zone data loading ─────────────────────────────────────────────────────────
 function useAllZones(districts: DistrictSummary[]) {
   const [zones, setZones] = useState<ZoneRiskOut[]>([])
@@ -289,14 +271,12 @@ function useAllZones(districts: DistrictSummary[]) {
 
 // ── Main GeoIntelligence page ─────────────────────────────────────────────────
 export default function GeoIntelligence() {
-  const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const mode = (searchParams.get('mode') ?? 'default') as MapMode
   const setMode = (m: string) => setSearchParams(m === 'default' ? {} : { mode: m })
 
   const [selectedDistrict, setSelectedDistrict] = useState<DistrictSummary | null>(null)
   const [selectedZoneDistrict, setSelectedZoneDistrict] = useState<DistrictSummary | null>(null)
-  const [networkOpen, setNetworkOpen] = useState(mode === 'network')
   const [scoring, setScoring] = useState(false)
 
   const { data: districtPage, loading: districtLoading } = useApi(() => mapApi.districts())
@@ -308,8 +288,6 @@ export default function GeoIntelligence() {
     () => (selectedDistrict ? mapApi.districtSummary(selectedDistrict.id) : Promise.resolve(null)),
     [selectedDistrict?.id],
   )
-
-  useEffect(() => { if (mode === 'network') setNetworkOpen(true) }, [mode])
 
   // Map centre derived from the loaded districts (centroids average).
   const centres = districts.map(d => centroidOf(d.geometry)).filter((c): c is [number, number] => c !== null)
@@ -342,10 +320,10 @@ export default function GeoIntelligence() {
     <div className="relative h-full flex flex-col">
       {/* Tab bar */}
       <div className="shrink-0 flex items-center border-b border-surface-border bg-surface-raised px-4 gap-1">
-        {['default', 'zone', 'network'].map(m => (
+        {['default', 'zone'].map(m => (
           <button key={m} onClick={() => setMode(m)}
             className={`px-4 py-2.5 text-xs font-medium capitalize transition-colors border-b-2 -mb-px ${mode === m ? 'border-accent-blue text-accent-blue' : 'border-transparent text-sentinel-400 hover:text-sentinel-200'}`}>
-            {m === 'default' ? 'Default' : m === 'zone' ? 'Zone Mode' : 'Network'}
+            {m === 'default' ? 'Default' : 'Zone Mode'}
           </button>
         ))}
 
@@ -404,7 +382,7 @@ export default function GeoIntelligence() {
                 )
               })}
 
-              {mode !== 'network' && districts.map(d => {
+              {districts.map(d => {
                 const c = centroidOf(d.geometry)
                 if (!c) return null
                 const color = districtColor(d)
@@ -435,19 +413,6 @@ export default function GeoIntelligence() {
                   </CircleMarker>
                 )
               })}
-
-              {/* Network mode — no geographic entity data on backend */}
-              {mode === 'network' && (
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                  <div className="pointer-events-auto bg-surface-card/85 backdrop-blur-sm border border-surface-border rounded-lg px-5 py-4 text-center max-w-xs">
-                    <Activity className="w-5 h-5 text-sentinel-400 mx-auto mb-2" />
-                    <p className="text-xs text-sentinel-200">Entity network data is not geo-tagged.</p>
-                    <button onClick={() => navigate('/network')} className="mt-2 text-[11px] font-semibold text-accent-blue hover:text-blue-400 transition-colors">
-                      Open Network Workspace →
-                    </button>
-                  </div>
-                </div>
-              )}
             </MapContainer>
           </ErrorBoundary>
         )}
@@ -470,8 +435,6 @@ export default function GeoIntelligence() {
             scoring={scoring}
           />
         )}
-        {mode === 'network' && networkOpen && <NetworkPreview onClose={() => setNetworkOpen(false)} />}
-
         {/* Zone click helper */}
         {mode === 'zone' && !selectedZoneDistrict && (
           <div className="absolute bottom-6 right-4 z-[500] flex items-center gap-2 bg-surface-card/80 border border-surface-border rounded-lg px-3 py-2 text-[11px] text-sentinel-400 backdrop-blur-sm">
