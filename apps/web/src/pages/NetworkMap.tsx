@@ -5,6 +5,7 @@ import { X, ZoomIn, ZoomOut, AlertTriangle, ArrowRight, ArrowLeft, Search, Loade
 import { TabBar } from '../components/ui/TabBar'
 import { ErrorBoundary } from '../components/ui/ErrorBoundary'
 import { SkeletonGraph } from '../components/ui/Skeletons'
+import { EntityRegistryTable } from '../components/network/EntityRegistryTable'
 import { useApi } from '../hooks/useApi'
 import { useAppContext } from '../context/AppContext'
 import { networkApi } from '../services/endpoints'
@@ -274,67 +275,74 @@ export default function NetworkMap() {
 
   return (
     <div className="flex flex-col h-full">
-      <TabBar tabs={['Network Graph', 'Node Explorer', 'Anomalies']} active={activeTab} onChange={setActiveTab}
+      <TabBar tabs={['Network Graph', 'Node Explorer']} active={activeTab} onChange={setActiveTab}
         className="px-4 bg-surface-raised shrink-0" />
 
-      <div className="flex-1 relative overflow-hidden">
-        {/* Dot-grid canvas */}
-        <div className="absolute inset-0 dot-grid opacity-50" />
+      {activeTab === 'Node Explorer' ? (
+        <div className="flex-1 flex flex-col overflow-hidden relative">
+          <EntityRegistryTable onSelectEntity={setSelectedId} />
+          {selectedId && <NodeExplorerPanel entityId={selectedId} onClose={() => setSelectedId(null)} />}
+        </div>
+      ) : (
+        <div className="flex-1 relative overflow-hidden">
+          {/* Dot-grid canvas */}
+          <div className="absolute inset-0 dot-grid opacity-50" />
 
-        {loading ? (
-          <SkeletonGraph />
-        ) : (
-          <ErrorBoundary label="Network graph failed to render">
-            <CytoscapeComponent
-              elements={elements}
-              stylesheet={CY_STYLESHEET}
-              style={{ width: '100%', height: '100%', background: 'transparent' }}
-              cy={(cy: cytoscape.Core) => {
-                setCyRef(cy)
-                cy.on('tap', 'node', handleNodeClick)
-                cy.on('tap', function (e: cytoscape.EventObject) {
-                  if (e.target === cy) setSelectedId(null)
-                })
-              }}
-              layout={{ name: 'cose', animate: true, padding: 40 }}
-              userZoomingEnabled
-              userPanningEnabled
-            />
-          </ErrorBoundary>
-        )}
+          {loading ? (
+            <SkeletonGraph />
+          ) : (
+            <ErrorBoundary label="Network graph failed to render">
+              <CytoscapeComponent
+                elements={elements}
+                stylesheet={CY_STYLESHEET}
+                style={{ width: '100%', height: '100%', background: 'transparent' }}
+                cy={(cy: cytoscape.Core) => {
+                  setCyRef(cy)
+                  cy.on('tap', 'node', handleNodeClick)
+                  cy.on('tap', function (e: cytoscape.EventObject) {
+                    if (e.target === cy) setSelectedId(null)
+                  })
+                }}
+                layout={{ name: 'cose', animate: true, padding: 40 }}
+                userZoomingEnabled
+                userPanningEnabled
+              />
+            </ErrorBoundary>
+          )}
 
-        {error && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 z-10">
-            <p className="text-xs text-severity-critical">Failed to load network: {error}</p>
-            <button onClick={reload} className="text-xs font-medium text-accent-blue hover:text-blue-400">Retry</button>
+          {error && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 z-10">
+              <p className="text-xs text-severity-critical">Failed to load network: {error}</p>
+              <button onClick={reload} className="text-xs font-medium text-accent-blue hover:text-blue-400">Retry</button>
+            </div>
+          )}
+
+          {/* Bottom control bar */}
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1 bg-surface-raised/90 border border-surface-border rounded-xl px-3 py-2 backdrop-blur-sm">
+            <button onClick={zoomOut} className="p-1.5 rounded text-sentinel-400 hover:text-sentinel-200 hover:bg-surface-hover transition-colors"><ZoomOut className="w-3.5 h-3.5" /></button>
+            <span className="font-mono text-[11px] text-sentinel-300 w-10 text-center">{zoom}%</span>
+            <button onClick={zoomIn} className="p-1.5 rounded text-sentinel-400 hover:text-sentinel-200 hover:bg-surface-hover transition-colors"><ZoomIn className="w-3.5 h-3.5" /></button>
+            <div className="w-px h-4 bg-surface-border mx-1" />
+            <span className="text-[10px] text-sentinel-400">
+              {entities.length} entities · {relationships.length} relationships
+            </span>
           </div>
-        )}
 
-        {/* Bottom control bar */}
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1 bg-surface-raised/90 border border-surface-border rounded-xl px-3 py-2 backdrop-blur-sm">
-          <button onClick={zoomOut} className="p-1.5 rounded text-sentinel-400 hover:text-sentinel-200 hover:bg-surface-hover transition-colors"><ZoomOut className="w-3.5 h-3.5" /></button>
-          <span className="font-mono text-[11px] text-sentinel-300 w-10 text-center">{zoom}%</span>
-          <button onClick={zoomIn} className="p-1.5 rounded text-sentinel-400 hover:text-sentinel-200 hover:bg-surface-hover transition-colors"><ZoomIn className="w-3.5 h-3.5" /></button>
-          <div className="w-px h-4 bg-surface-border mx-1" />
-          <span className="text-[10px] text-sentinel-400">
-            {entities.length} entities · {relationships.length} relationships
-          </span>
+          {/* Search bar */}
+          <div className="absolute top-4 left-4 z-10 flex items-center gap-2 bg-surface-raised/90 border border-surface-border rounded-lg px-3 py-2 backdrop-blur-sm w-64">
+            <Search className="w-3.5 h-3.5 text-sentinel-400 shrink-0" />
+            <input
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              placeholder="Filter entities…"
+              className="flex-1 bg-transparent text-xs text-sentinel-100 placeholder-sentinel-500 focus:outline-none"
+            />
+          </div>
+
+          {/* Entity Explorer panel */}
+          {selectedId && <NodeExplorerPanel entityId={selectedId} onClose={() => setSelectedId(null)} />}
         </div>
-
-        {/* Search bar */}
-        <div className="absolute top-4 left-4 z-10 flex items-center gap-2 bg-surface-raised/90 border border-surface-border rounded-lg px-3 py-2 backdrop-blur-sm w-64">
-          <Search className="w-3.5 h-3.5 text-sentinel-400 shrink-0" />
-          <input
-            value={query}
-            onChange={e => setQuery(e.target.value)}
-            placeholder="Filter entities…"
-            className="flex-1 bg-transparent text-xs text-sentinel-100 placeholder-sentinel-500 focus:outline-none"
-          />
-        </div>
-
-        {/* Entity Explorer panel */}
-        {selectedId && <NodeExplorerPanel entityId={selectedId} onClose={() => setSelectedId(null)} />}
-      </div>
+      )}
     </div>
   )
 }
