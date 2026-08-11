@@ -11,7 +11,6 @@ const placeholderMap: Record<string, string> = {
   '/cases':       'Search entities or cases...',
   '/map':         'Search districts, entities, or incident IBs...',
   '/network':     'Search nodes, alerts...',
-  '/analytics':   'Search analytics...',
   '/governance':  'Search logs...',
 }
 

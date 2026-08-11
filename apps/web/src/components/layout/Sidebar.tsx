@@ -1,8 +1,8 @@
 import { NavLink, Link, useLocation } from 'react-router-dom'
 import {
-  ClipboardList, Map, BarChart3, Shield,
+  ClipboardList, Map, Shield,
   HelpCircle, Activity, AlertTriangle, Globe, LayoutGrid,
-  Share2, Database, TriangleAlert, Terminal,
+  Share2, Database, Terminal,
   Download, FileText, Lock, Eye, ArrowLeft, Merge, Users,
 } from 'lucide-react'
 import { useAppContext } from '../../context/AppContext'
@@ -12,7 +12,6 @@ type SidebarVariant = 'main' | 'geo' | 'network' | 'governance'
 const MAIN_NAV = [
   { to: '/cases',     icon: ClipboardList,  label: 'Case Workspace'    },
   { to: '/map',       icon: Map,            label: 'Intelligence Map'  },
-  { to: '/analytics', icon: BarChart3,      label: 'Threat Analytics'  },
   { to: '/governance',icon: Shield,         label: 'Governance'        },
 ]
 
@@ -27,7 +26,6 @@ const NETWORK_NAV = [
   { to: '/network',         icon: Share2,      label: 'Network Map'   },
   { to: '/map/district',    icon: LayoutGrid,  label: 'Regional Ops'  },
   { to: '/network/registry',icon: Database,    label: 'Node Registry' },
-  { to: '/analytics',       icon: TriangleAlert,label:'Risk Signals'  },
 ]
 
 const GOVERNANCE_NAV = [

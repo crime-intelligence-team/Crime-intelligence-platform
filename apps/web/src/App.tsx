@@ -18,9 +18,6 @@ import RegionalDashboard from './pages/RegionalDashboard'
 import NetworkMap   from './pages/NetworkMap'
 import NodeRegistry from './pages/NodeRegistry'
 
-// Analytics
-import ThreatAnalytics from './pages/ThreatAnalytics'
-
 // Governance
 import GovernanceSecurity   from './pages/GovernanceSecurity'
 import GovernanceIntegrity  from './pages/GovernanceIntegrity'
@@ -56,9 +53,6 @@ export default function App() {
           {/* Network */}
           <Route path="/network"          element={<NetworkMap />} />
           <Route path="/network/registry" element={<NodeRegistry />} />
-
-          {/* Analytics */}
-          <Route path="/analytics" element={<ThreatAnalytics />} />
 
           {/* Governance — all 5 sub-routes */}
           <Route path="/governance"             element={<GovernanceSecurity />} />

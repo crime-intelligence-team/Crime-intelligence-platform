@@ -9,7 +9,6 @@ const LABELS: Record<string, string> = {
   district:     'Regional Dashboards',
   network:      'Network Map',
   registry:     'Node Registry',
-  analytics:    'Threat Analytics',
   governance:   'Governance',
   integrity:    'Integrity Monitoring',
   audit:        'Audit Log',
