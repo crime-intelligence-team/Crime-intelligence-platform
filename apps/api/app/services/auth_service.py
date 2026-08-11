@@ -8,7 +8,6 @@ from app.core.config import settings
 from app.core.permissions import get_officer_permissions
 from app.core.security import create_access_token, decode_access_token, verify_password
 from app.models.entities import Officer
-from app.models.governance import AuditLogEntry
 from app.schemas.auth import (
     CurrentUserResponse,
     LoginResponse,
@@ -18,26 +17,30 @@ from app.schemas.auth import (
     StepUpRequest,
     StepUpResponse,
 )
+from app.services import audit_service
 
 
 def _write_audit_log(
     db: Session,
-    actor_id,
+    actor: Officer | None,
     action: str,
+    success: bool = True,
     resource_type: str | None = None,
     resource_id: str | None = None,
     ip_address: str | None = None,
     detail: str | None = None,
 ) -> None:
-    entry = AuditLogEntry(
-        actor_id=actor_id,
+    audit_service.write_audit_log(
+        db,
+        actor=actor,
         action=action,
+        module=audit_service.MODULE_AUTH,
+        success=success,
         resource_type=resource_type,
         resource_id=resource_id,
         ip_address=ip_address,
         detail=detail,
     )
-    db.add(entry)
     db.commit()
 
 
@@ -58,7 +61,7 @@ def authenticate_officer(
 
     if officer is None:
         _write_audit_log(
-            db, actor_id=None, action="login_failed",
+            db, actor=None, action="login_failed", success=False,
             detail=f"Unknown user: {username_or_official_id}",
             ip_address=ip_address,
         )
@@ -75,7 +78,7 @@ def authenticate_officer(
 
     if not verify_password(password, officer.hashed_password):
         _write_audit_log(
-            db, actor_id=officer.id, action="login_failed",
+            db, actor=officer, action="login_failed", success=False,
             detail="Invalid password",
             ip_address=ip_address,
         )
@@ -92,7 +95,7 @@ def authenticate_officer(
 
     if not officer.is_active:
         _write_audit_log(
-            db, actor_id=officer.id, action="login_failed",
+            db, actor=officer, action="login_failed", success=False,
             detail="Inactive account",
             ip_address=ip_address,
         )
@@ -124,7 +127,7 @@ def login(
             expires_minutes=5,
         )
         _write_audit_log(
-            db, actor_id=officer.id, action="mfa_challenge_issued",
+            db, actor=officer, action="mfa_challenge_issued",
             ip_address=ip_address,
         )
         return LoginResponse(mfa_required=True, mfa_challenge_token=challenge_token)
@@ -133,7 +136,7 @@ def login(
     db.commit()
 
     _write_audit_log(
-        db, actor_id=officer.id, action="login",
+        db, actor=officer, action="login",
         ip_address=ip_address,
     )
 
@@ -197,7 +200,7 @@ def verify_mfa(
             officer.totp_secret
         ).verify(otp_code.strip(), valid_window=1):
             _write_audit_log(
-                db, actor_id=officer.id, action="mfa_verification_failed",
+                db, actor=officer, action="mfa_verification_failed", success=False,
                 ip_address=ip_address,
             )
             raise HTTPException(
@@ -220,7 +223,7 @@ def verify_mfa(
     )
 
     _write_audit_log(
-        db, actor_id=officer.id, action="mfa_verified",
+        db, actor=officer, action="mfa_verified",
         ip_address=ip_address,
     )
     return MfaVerifyResponse(access_token=access_token)
@@ -239,7 +242,7 @@ def logout(
     blocklist — implement that only if the brief explicitly requires it.
     """
     _write_audit_log(
-        db, actor_id=officer.id, action="logout",
+        db, actor=officer, action="logout",
         ip_address=ip_address,
     )
 
@@ -282,7 +285,7 @@ def issue_step_up_assertion(
     """
     if not verify_password(password, officer.hashed_password):
         _write_audit_log(
-            db, actor_id=officer.id, action="step_up_failed",
+            db, actor=officer, action="step_up_failed", success=False,
             detail="Invalid password", ip_address=ip_address,
         )
         raise HTTPException(
@@ -301,7 +304,7 @@ def issue_step_up_assertion(
             officer.totp_secret
         ).verify(otp_code.strip(), valid_window=1):
             _write_audit_log(
-                db, actor_id=officer.id, action="step_up_failed",
+                db, actor=officer, action="step_up_failed", success=False,
                 detail="Invalid or missing OTP code", ip_address=ip_address,
             )
             raise HTTPException(
@@ -321,7 +324,7 @@ def issue_step_up_assertion(
         expires_minutes=settings.STEP_UP_EXPIRE_MINUTES,
     )
     _write_audit_log(
-        db, actor_id=officer.id, action="step_up",
+        db, actor=officer, action="step_up",
         ip_address=ip_address,
     )
     return StepUpResponse(
@@ -345,7 +348,7 @@ def enroll_mfa(
     an abandoned enrollment never locks anyone out."""
     if not verify_password(password, officer.hashed_password):
         _write_audit_log(
-            db, actor_id=officer.id, action="mfa_enroll_failed",
+            db, actor=officer, action="mfa_enroll_failed", success=False,
             detail="Invalid password", ip_address=ip_address,
         )
         raise HTTPException(
@@ -364,7 +367,7 @@ def enroll_mfa(
     officer.totp_enrolled_at = None  # enrollment completes only at confirm
     db.commit()
     _write_audit_log(
-        db, actor_id=officer.id, action="mfa_enroll_initiated",
+        db, actor=officer, action="mfa_enroll_initiated",
         ip_address=ip_address,
     )
     return MfaEnrollResponse(
@@ -399,7 +402,7 @@ def confirm_mfa(
         officer.totp_secret
     ).verify(otp_code.strip(), valid_window=1):
         _write_audit_log(
-            db, actor_id=officer.id, action="mfa_confirm_failed",
+            db, actor=officer, action="mfa_confirm_failed", success=False,
             ip_address=ip_address,
         )
         raise HTTPException(
@@ -417,7 +420,7 @@ def confirm_mfa(
     officer.totp_enrolled_at = datetime.now(timezone.utc)
     db.commit()
     _write_audit_log(
-        db, actor_id=officer.id, action="mfa_enrolled",
+        db, actor=officer, action="mfa_enrolled",
         ip_address=ip_address,
     )
     return MfaStatusResponse(mfa_required=True)
@@ -435,7 +438,7 @@ def disable_mfa(
     touches credentials."""
     if not verify_password(password, officer.hashed_password):
         _write_audit_log(
-            db, actor_id=officer.id, action="mfa_disable_failed",
+            db, actor=officer, action="mfa_disable_failed", success=False,
             detail="Invalid password", ip_address=ip_address,
         )
         raise HTTPException(
@@ -454,7 +457,7 @@ def disable_mfa(
     officer.mfa_enabled = 0
     db.commit()
     _write_audit_log(
-        db, actor_id=officer.id, action="mfa_disabled",
+        db, actor=officer, action="mfa_disabled",
         ip_address=ip_address,
     )
     return MfaStatusResponse(mfa_required=False)

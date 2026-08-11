@@ -1,3 +1,4 @@
+from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -41,12 +42,18 @@ def list_audit_log(
     page_size: int = Query(50, ge=1, le=100),
     action: str | None = Query(None),
     actor_id: str | None = Query(None),
+    module: str | None = Query(None),
+    success: bool | None = Query(None),
+    date_from: datetime | None = Query(None),
+    date_to: datetime | None = Query(None),
     q: str | None = Query(None, description="Free-text filter over action/resource/detail"),
     _officer: Officer = Depends(require_permissions("audit:view")),
     db: Session = Depends(get_db),
 ):
     """Append-only audit trail (brief section 9), newest first. Gated
-    audit:view (supervisor/administrator). No write paths exist."""
+    audit:view (supervisor/administrator). No write paths exist — every
+    write goes through audit_service.write_audit_log from within the
+    module whose action is being recorded."""
     items, total = audit_service.list_audit_entries(
         db=db,
         officer=_officer,
@@ -54,6 +61,10 @@ def list_audit_log(
         page_size=page_size,
         action=action,
         actor_id=actor_id,
+        module=module,
+        success=success,
+        date_from=date_from,
+        date_to=date_to,
         query=q,
     )
     return PaginatedResponse(items=items, total=total, page=page, page_size=page_size)

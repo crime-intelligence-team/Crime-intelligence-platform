@@ -22,8 +22,10 @@ const actionRisk: Record<string, string> = {
   export: 'medium',
 }
 
-function ActionBadge({ action }: { action: string }) {
-  const risk = actionRisk[action] ?? (action.startsWith('exception') ? 'medium' : 'low')
+const MODULES = ['auth', 'cases', 'network', 'governance', 'map', 'dashboard']
+
+function ActionBadge({ action, success }: { action: string; success: boolean }) {
+  const risk = !success ? 'high' : actionRisk[action] ?? (action.startsWith('exception') ? 'medium' : 'low')
   const cls =
     risk === 'high'
       ? 'bg-severity-tint-critical text-severity-critical border-severity-critical/30'
@@ -32,7 +34,7 @@ function ActionBadge({ action }: { action: string }) {
         : 'bg-surface-hover text-sentinel-400 border-surface-border'
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded-sm border text-[10px] font-bold tracking-wider ${cls}`}>
-      {action.toUpperCase()}
+      {action.toUpperCase()}{!success ? ' ✕' : ''}
     </span>
   )
 }
@@ -51,10 +53,24 @@ export default function GovernanceAudit() {
   const [page, setPage] = useState(1)
   const [search, setSearch] = useState('')
   const [actionFilter, setActionFilter] = useState('')
+  const [moduleFilter, setModuleFilter] = useState('')
+  const [outcomeFilter, setOutcomeFilter] = useState<'' | 'success' | 'failed'>('')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
 
   const { data, loading, error, refetch } = useApi(
-    () => adminApi.audit({ page, page_size: PAGE_SIZE, q: search || undefined, action: actionFilter || undefined }),
-    [page, search, actionFilter],
+    () =>
+      adminApi.audit({
+        page,
+        page_size: PAGE_SIZE,
+        q: search || undefined,
+        action: actionFilter || undefined,
+        module: moduleFilter || undefined,
+        success: outcomeFilter === '' ? undefined : outcomeFilter === 'success',
+        date_from: dateFrom ? new Date(dateFrom).toISOString() : undefined,
+        date_to: dateTo ? new Date(dateTo).toISOString() : undefined,
+      }),
+    [page, search, actionFilter, moduleFilter, outcomeFilter, dateFrom, dateTo],
   )
 
   function applySearch(e: React.FormEvent) {
@@ -84,19 +100,21 @@ export default function GovernanceAudit() {
   return (
     <div className="h-full flex flex-col bg-surface-base">
       {/* Header */}
-      <div className="px-6 py-4 border-b border-surface-border shrink-0 flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-lg font-bold text-sentinel-50 flex items-center gap-2">
-            <History className="w-4 h-4 text-accent-blue" /> Global Audit Log
-          </h1>
-          <p className="text-xs text-sentinel-400 mt-0.5">Append-only record of searches, views, exports, notes, and approvals.</p>
-        </div>
-        <div className="flex items-center gap-2">
+      <div className="px-6 py-4 border-b border-surface-border shrink-0 flex flex-col gap-3">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h1 className="text-lg font-bold text-sentinel-50 flex items-center gap-2">
+              <History className="w-4 h-4 text-accent-blue" /> Global Audit Log
+            </h1>
+            <p className="text-xs text-sentinel-400 mt-0.5">Append-only record of searches, views, exports, notes, and approvals.</p>
+          </div>
           <form onSubmit={applySearch} className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-sentinel-500" />
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search log entries..."
               className={inputCls} />
           </form>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
           <div className="relative">
             <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-sentinel-500 pointer-events-none" />
             <select value={actionFilter} onChange={e => { setActionFilter(e.target.value); setPage(1) }}
@@ -107,14 +125,35 @@ export default function GovernanceAudit() {
               ))}
             </select>
           </div>
+          <select value={moduleFilter} onChange={e => { setModuleFilter(e.target.value); setPage(1) }}
+            className="px-3 py-1.5 bg-surface-card border border-surface-border rounded-lg text-xs text-sentinel-100 focus:outline-none focus:border-accent-blue/40 transition-colors">
+            <option value="">All modules</option>
+            {MODULES.map(m => <option key={m} value={m}>{m}</option>)}
+          </select>
+          <select value={outcomeFilter} onChange={e => { setOutcomeFilter(e.target.value as typeof outcomeFilter); setPage(1) }}
+            className="px-3 py-1.5 bg-surface-card border border-surface-border rounded-lg text-xs text-sentinel-100 focus:outline-none focus:border-accent-blue/40 transition-colors">
+            <option value="">Any outcome</option>
+            <option value="success">Success only</option>
+            <option value="failed">Failed only</option>
+          </select>
+          <div className="flex items-center gap-1.5 text-xs text-sentinel-400">
+            <span>From</span>
+            <input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(1) }}
+              className="px-2 py-1.5 bg-surface-card border border-surface-border rounded-lg text-xs text-sentinel-100 focus:outline-none focus:border-accent-blue/40 transition-colors" />
+            <span>To</span>
+            <input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(1) }}
+              className="px-2 py-1.5 bg-surface-card border border-surface-border rounded-lg text-xs text-sentinel-100 focus:outline-none focus:border-accent-blue/40 transition-colors" />
+          </div>
         </div>
       </div>
 
       {/* Table header */}
       <div className="grid border-b border-surface-border bg-surface-raised/50 shrink-0"
-        style={{ gridTemplateColumns: '150px 160px 150px 1fr 90px' }}>
+        style={{ gridTemplateColumns: '140px 150px 150px 100px 130px 1fr 90px' }}>
         <div className="px-4 py-2.5 section-label">TIMESTAMP (UTC)</div>
         <div className="px-4 py-2.5 section-label">ACTOR</div>
+        <div className="px-4 py-2.5 section-label">ROLE / JURISDICTION</div>
+        <div className="px-4 py-2.5 section-label">MODULE</div>
         <div className="px-4 py-2.5 section-label">ACTION</div>
         <div className="px-4 py-2.5 section-label">RESOURCE / DETAIL</div>
         <div className="px-4 py-2.5 section-label">ID</div>
@@ -136,12 +175,17 @@ export default function GovernanceAudit() {
           entries.map((e: AuditLogEntry) => (
             <div key={e.id}
               className="grid items-center border-b border-surface-border hover:bg-surface-hover transition-colors"
-              style={{ gridTemplateColumns: '150px 160px 150px 1fr 90px' }}>
+              style={{ gridTemplateColumns: '140px 150px 150px 100px 130px 1fr 90px' }}>
               <div className="px-4 py-3 font-mono text-[10px] text-sentinel-300">{fmt(e.created_at)}</div>
               <div className="px-4 py-3 font-mono text-[11px] text-sentinel-100 truncate">
                 {e.actor_name ?? (e.actor_id ? `${e.actor_id.slice(0, 8)}…` : 'SYSTEM')}
               </div>
-              <div className="px-4 py-3"><ActionBadge action={e.action} /></div>
+              <div className="px-4 py-3 text-[11px] text-sentinel-300 truncate">
+                {e.actor_role ? e.actor_role.replace(/_/g, ' ') : '—'}
+                {e.actor_district_name ? <span className="block text-[10px] text-sentinel-500 truncate">{e.actor_district_name}</span> : null}
+              </div>
+              <div className="px-4 py-3 text-[11px] text-sentinel-400 uppercase tracking-wide">{e.module ?? '—'}</div>
+              <div className="px-4 py-3"><ActionBadge action={e.action} success={e.success} /></div>
               <div className="px-4 py-3 text-xs text-sentinel-300 leading-relaxed">
                 <span className="text-sentinel-200">{e.resource_type ?? '—'}</span>
                 {e.detail ? <span className="block font-mono text-[10px] text-sentinel-400 truncate max-w-[560px]">{e.detail}</span> : null}

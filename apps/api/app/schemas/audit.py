@@ -14,7 +14,12 @@ class AuditLogEntryOut(BaseModel):
     id: str
     actor_id: str | None
     actor_name: str | None
+    actor_role: str | None
+    actor_district_id: str | None
+    actor_district_name: str | None
     action: str
+    module: str | None
+    success: bool
     resource_type: str | None
     resource_id: str | None
     ip_address: str | None

@@ -30,7 +30,7 @@ from app.core.classification import ROLE_MAX_CLASSIFICATION, classification_filt
 from app.models.base import CLASSIFICATION_RANK
 from app.models.base import ClassificationLevel as ModelClassificationLevel
 from app.models.entities import Address, Case, District, Note, Officer, Role, Zone
-from app.models.governance import AuditLogEntry, CaseTeamMember
+from app.models.governance import CaseTeamMember
 from app.schemas.common import ClassificationLevel
 from app.schemas.cases import (
     CaseCreate,
@@ -42,6 +42,7 @@ from app.schemas.cases import (
     NoteCreate,
     NoteSummary,
 )
+from app.services import audit_service
 from app.services.district_service import get_accessible_district_ids
 from app.services.access_exception_service import exempt_case_ids
 from app.services.officer_service import get_subordinate_officer_ids
@@ -321,7 +322,7 @@ def update_case_status(
         case.status = new_status
         _write_audit_log(
             db,
-            actor_id=officer.id,
+            actor=officer,
             action="case_status_changed",
             resource_type="case",
             resource_id=str(case.id),
@@ -432,7 +433,7 @@ def add_team_member(
     db.add(row)
     _write_audit_log(
         db,
-        actor_id=officer.id,
+        actor=officer,
         action="case_team_member_added",
         resource_type="case",
         resource_id=str(case_id),
@@ -486,7 +487,7 @@ def remove_team_member(
     row.removed_at = datetime.now(timezone.utc)
     _write_audit_log(
         db,
-        actor_id=officer.id,
+        actor=officer,
         action="case_team_member_removed",
         resource_type="case",
         resource_id=str(case_id),
@@ -636,27 +637,26 @@ def list_notes(
 
 def _write_audit_log(
     db: Session,
-    actor_id,
+    actor: Officer,
     action: str,
     resource_type: str | None,
     resource_id: str | None,
     ip_address: str | None,
     detail: str | None,
 ) -> None:
-    """Same AuditLogEntry shape auth_service uses (actor/action/resource/
-    ip/detail, added to the transaction): every export is a distinct
-    audited event. Only successful exports are logged — permission and
-    visibility rejections never reach this service, and nothing in the
-    platform audits failures today."""
-    db.add(
-        AuditLogEntry(
-            actor_id=actor_id,
-            action=action,
-            resource_type=resource_type,
-            resource_id=resource_id,
-            ip_address=ip_address,
-            detail=detail,
-        )
+    """Every case-module action (status change, team add/remove, export) is
+    a distinct audited event, module="cases". Only successful actions are
+    logged — permission and visibility rejections never reach this
+    service, and nothing in the platform audits failures today."""
+    audit_service.write_audit_log(
+        db,
+        actor=actor,
+        action=action,
+        module=audit_service.MODULE_CASES,
+        resource_type=resource_type,
+        resource_id=resource_id,
+        ip_address=ip_address,
+        detail=detail,
     )
 
 
@@ -705,7 +705,7 @@ def export_case(
     export_id = str(uuid.uuid4())
     _write_audit_log(
         db=db,
-        actor_id=officer.id,
+        actor=officer,
         action="export",
         resource_type="case",
         resource_id=str(case.id),

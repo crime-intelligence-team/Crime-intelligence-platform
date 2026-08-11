@@ -16,8 +16,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.entities import Officer
-from app.models.governance import AuditLogEntry
 from app.schemas.officers import OfficerSummary
+from app.services import audit_service
 
 MAX_CHAIN_DEPTH = 20  # defensive bound against a malformed cycle in the data
 
@@ -99,15 +99,15 @@ def set_manager(
             raise ManagerCycleError(str(manager_id))
 
     target.manager_id = manager_id
-    db.add(
-        AuditLogEntry(
-            actor_id=officer.id,
-            action="officer_manager_changed",
-            resource_type="officer",
-            resource_id=str(target.id),
-            ip_address=ip_address,
-            detail=json.dumps({"manager_id": str(manager_id) if manager_id else None}),
-        )
+    audit_service.write_audit_log(
+        db,
+        actor=officer,
+        action="officer_manager_changed",
+        module=audit_service.MODULE_GOVERNANCE,
+        resource_type="officer",
+        resource_id=str(target.id),
+        ip_address=ip_address,
+        detail=json.dumps({"manager_id": str(manager_id) if manager_id else None}),
     )
     db.commit()
     db.refresh(target)

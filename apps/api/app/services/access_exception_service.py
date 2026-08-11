@@ -25,8 +25,9 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.entities import Case, Officer, Role
-from app.models.governance import AccessExceptionRequest, AuditLogEntry
+from app.models.governance import AccessExceptionRequest
 from app.schemas.access_exceptions import AccessExceptionRequestCreate
+from app.services import audit_service
 
 PENDING = "pending"
 APPROVED = "approved"
@@ -62,19 +63,19 @@ class CannotReviewOwnRequestError(Exception):
 
 def _write_audit_log(
     db: Session,
-    actor_id,
+    actor: Officer,
     action: str,
     resource_id: str,
     detail: str | None,
 ) -> None:
-    db.add(
-        AuditLogEntry(
-            actor_id=actor_id,
-            action=action,
-            resource_type="access_exception",
-            resource_id=resource_id,
-            detail=detail,
-        )
+    audit_service.write_audit_log(
+        db,
+        actor=actor,
+        action=action,
+        module=audit_service.MODULE_GOVERNANCE,
+        resource_type="access_exception",
+        resource_id=resource_id,
+        detail=detail,
     )
 
 
@@ -133,7 +134,7 @@ def request_exception(
     db.flush()
     _write_audit_log(
         db=db,
-        actor_id=officer.id,
+        actor=officer,
         action="exception_requested",
         resource_id=str(req.id),
         detail=json.dumps(
@@ -190,7 +191,7 @@ def _transition(
     db.flush()
     _write_audit_log(
         db=db,
-        actor_id=officer.id,
+        actor=officer,
         action=f"exception_{target}",
         resource_id=str(req.id),
         detail=json.dumps({"case_reference": req.case_reference}),

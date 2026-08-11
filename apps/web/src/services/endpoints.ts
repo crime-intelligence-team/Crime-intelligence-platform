@@ -165,8 +165,19 @@ export const adminApi = {
     post<ConfidenceReviewResponse>('/admin/confidence-review', payload),
   decideConfidenceReview: (id: string, payload: ConfidenceReviewDecision) =>
     post<ConfidenceReviewResponse>(`/admin/confidence-review/${id}/decision`, payload),
-  audit: (params: { page?: number; page_size?: number; action?: string; actor_id?: string; q?: string } = {}) =>
-    get<PaginatedResponse<AuditLogEntry>>('/admin/audit', params),
+  audit: (
+    params: {
+      page?: number
+      page_size?: number
+      action?: string
+      actor_id?: string
+      module?: string
+      success?: boolean
+      date_from?: string
+      date_to?: string
+      q?: string
+    } = {},
+  ) => get<PaginatedResponse<AuditLogEntry>>('/admin/audit', params),
 }
 
 // ─── Officers ─────────────────────────────────────────────────────────────────

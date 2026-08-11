@@ -37,10 +37,11 @@ from sqlalchemy.orm import Session
 
 from app.models.base import CLASSIFICATION_RANK
 from app.models.entities import Officer
-from app.models.governance import AuditLogEntry, RedactionPolicyDecision
+from app.models.governance import RedactionPolicyDecision
 from app.schemas.cases import ExportResponse, NoteSummary, RedactionPolicyCreate
 from app.schemas.network import EntityDetail
 from app.schemas.common import RedactedField
+from app.services import audit_service
 
 
 class InvalidRedactionTargetError(Exception):
@@ -53,26 +54,28 @@ class RedactionPolicyNotFoundError(Exception):
 
 def _write_audit_log(
     db: Session,
-    actor_id,
+    actor: Officer,
     action: str,
+    module: str,
     resource_type: str | None,
     resource_id: str | None,
     detail: str | None,
     ip_address: str | None = None,
 ) -> None:
-    """Same AuditLogEntry shape case_service/auth_service use. Redaction
-    events are their own audited entries (policy CRUD + export_redaction +
-    entity_redaction), additive to the existing export audit — no frozen
-    code is touched."""
-    db.add(
-        AuditLogEntry(
-            actor_id=actor_id,
-            action=action,
-            resource_type=resource_type,
-            resource_id=resource_id,
-            detail=detail,
-            ip_address=ip_address,
-        )
+    """Redaction events are their own audited entries (policy CRUD +
+    export_redaction + entity_redaction), additive to the existing export
+    audit — no frozen code is touched. module varies by call site: policy
+    CRUD happens in the Governance admin UI, export/note-list redaction
+    happens within the Cases module, entity redaction within Network."""
+    audit_service.write_audit_log(
+        db,
+        actor=actor,
+        action=action,
+        module=module,
+        resource_type=resource_type,
+        resource_id=resource_id,
+        detail=detail,
+        ip_address=ip_address,
     )
 
 
@@ -98,8 +101,9 @@ def create_policy(
     db.flush()
     _write_audit_log(
         db=db,
-        actor_id=officer.id,
+        actor=officer,
         action="redaction_policy_created",
+        module=audit_service.MODULE_GOVERNANCE,
         resource_type="redaction_policy",
         resource_id=str(policy.id),
         detail=json.dumps(
@@ -136,8 +140,9 @@ def deactivate_policy(db: Session, officer: Officer, policy_id: UUID) -> Redacti
     db.flush()
     _write_audit_log(
         db=db,
-        actor_id=officer.id,
+        actor=officer,
         action="redaction_policy_deactivated",
+        module=audit_service.MODULE_GOVERNANCE,
         resource_type="redaction_policy",
         resource_id=str(policy.id),
         detail=None,
@@ -232,8 +237,9 @@ def apply_redactions(
     )
     _write_audit_log(
         db=db,
-        actor_id=officer.id,
+        actor=officer,
         action="export_redaction",
+        module=audit_service.MODULE_CASES,
         resource_type="case",
         resource_id=str(export.case.id),
         detail=json.dumps(
@@ -308,8 +314,9 @@ def apply_note_list_redactions(
 
     _write_audit_log(
         db=db,
-        actor_id=officer.id,
+        actor=officer,
         action="note_list_redaction",
+        module=audit_service.MODULE_CASES,
         resource_type="case",
         resource_id=case_id,
         detail=json.dumps(
@@ -388,8 +395,9 @@ def apply_entity_redactions(
     updated = detail.model_copy(update=masked)
     _write_audit_log(
         db=db,
-        actor_id=officer.id,
+        actor=officer,
         action="entity_redaction",
+        module=audit_service.MODULE_NETWORK,
         resource_type="entity",
         resource_id=detail.id,
         detail=(

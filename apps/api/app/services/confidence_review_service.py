@@ -22,8 +22,9 @@ from sqlalchemy.orm import Session
 
 from app.models.base import band_for_score
 from app.models.entities import Officer, RelationshipEdgeRef, ZoneRiskScore
-from app.models.governance import AuditLogEntry, ConfidenceReviewEvent
+from app.models.governance import ConfidenceReviewEvent
 from app.schemas.confidence import ConfidenceReviewSubmit
+from app.services import audit_service
 from app.services.alert_service import create_alert
 
 
@@ -57,19 +58,19 @@ class CannotReviewOwnSubmissionError(Exception):
 
 def _write_audit_log(
     db: Session,
-    actor_id,
+    actor: Officer,
     action: str,
     resource_id: str,
     detail: str | None,
 ) -> None:
-    db.add(
-        AuditLogEntry(
-            actor_id=actor_id,
-            action=action,
-            resource_type="confidence_review",
-            resource_id=resource_id,
-            detail=detail,
-        )
+    audit_service.write_audit_log(
+        db,
+        actor=actor,
+        action=action,
+        module=audit_service.MODULE_GOVERNANCE,
+        resource_type="confidence_review",
+        resource_id=resource_id,
+        detail=detail,
     )
 
 
@@ -115,7 +116,7 @@ def submit_review(
     db.flush()
     _write_audit_log(
         db=db,
-        actor_id=officer.id,
+        actor=officer,
         action="confidence_review_submitted",
         resource_id=str(event.id),
         detail=json.dumps(
@@ -169,7 +170,7 @@ def decide_review(
     db.flush()
     _write_audit_log(
         db=db,
-        actor_id=officer.id,
+        actor=officer,
         action=f"confidence_review_{decision}ed",
         resource_id=str(event.id),
         detail=json.dumps(

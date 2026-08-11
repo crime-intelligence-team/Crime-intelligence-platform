@@ -4,6 +4,7 @@ from sqlalchemy.orm import relationship
 
 from app.core.database import Base
 from app.models.base import ClassificationLevel, TimestampMixin, uuid_pk_column
+from app.models.entities import Role
 
 
 class AccessExceptionRequest(Base, TimestampMixin):
@@ -146,13 +147,29 @@ class CaseTeamMember(Base, TimestampMixin):
 
 
 class AuditLogEntry(Base, TimestampMixin):
-    """Append-only log: every search, filter, view, export, note action, approval (brief section 9)."""
+    """Append-only log: every search, filter, view, export, note action, approval (brief section 9).
+
+    actor_role/actor_district_id are a SNAPSHOT of the actor's role and
+    home district at write time, stamped onto the row itself rather than
+    resolved later via a join to the (possibly since-changed) officers
+    table — a role change or reassignment after the fact must never
+    silently rewrite what an old entry says the actor's role/jurisdiction
+    was when they took the action (brief section 9's "role and
+    jurisdiction at action time"). Null for system-generated entries with
+    no actor (e.g. a failed pre-auth login) and, unavoidably, for rows
+    written before this column existed — that history cannot be
+    reconstructed.
+    """
 
     __tablename__ = "audit_log_entries"
 
     id = uuid_pk_column()
     actor_id = Column(UUID(as_uuid=True), ForeignKey("officers.id"), nullable=True)
+    actor_role = Column(Enum(Role, name="officer_role"), nullable=True)
+    actor_district_id = Column(UUID(as_uuid=True), ForeignKey("districts.id"), nullable=True)
     action = Column(String, nullable=False)  # e.g. "login", "export", "view_entity"
+    module = Column(String, nullable=True)  # UI/API module the action occurred in, e.g. "auth", "cases"
+    success = Column(Boolean, nullable=False, default=True)
     resource_type = Column(String, nullable=True)
     resource_id = Column(String, nullable=True)
     ip_address = Column(String, nullable=True)
@@ -160,3 +177,4 @@ class AuditLogEntry(Base, TimestampMixin):
     detail = Column(Text, nullable=True)
 
     actor = relationship("Officer", foreign_keys=[actor_id])
+    actor_district = relationship("District", foreign_keys=[actor_district_id])

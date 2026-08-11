@@ -35,8 +35,9 @@ from sqlalchemy.orm import Session
 
 from app.models.base import CLASSIFICATION_RANK, ClassificationLevel
 from app.models.entities import Officer, Person
-from app.models.governance import AuditLogEntry, EntityResolutionEvent
+from app.models.governance import EntityResolutionEvent
 from app.schemas.entity_resolution import MergeRequest
+from app.services import audit_service
 
 
 class InvalidEntityTypeError(Exception):
@@ -73,19 +74,19 @@ class AlreadyReversedError(Exception):
 
 def _write_audit_log(
     db: Session,
-    actor_id,
+    actor: Officer,
     action: str,
     resource_id: str,
     detail: str | None,
 ) -> None:
-    db.add(
-        AuditLogEntry(
-            actor_id=actor_id,
-            action=action,
-            resource_type="entity_resolution",
-            resource_id=resource_id,
-            detail=detail,
-        )
+    audit_service.write_audit_log(
+        db,
+        actor=actor,
+        action=action,
+        module=audit_service.MODULE_GOVERNANCE,
+        resource_type="entity_resolution",
+        resource_id=resource_id,
+        detail=detail,
     )
 
 
@@ -171,7 +172,7 @@ def merge_entities(
     db.flush()
     _write_audit_log(
         db,
-        actor_id=officer.id,
+        actor=officer,
         action="entity_merge_performed",
         resource_id=str(event.id),
         detail=json.dumps(
@@ -205,7 +206,7 @@ def reverse_merge(
     db.flush()
     _write_audit_log(
         db,
-        actor_id=officer.id,
+        actor=officer,
         action="entity_merge_reversed",
         resource_id=str(event.id),
         detail=json.dumps(

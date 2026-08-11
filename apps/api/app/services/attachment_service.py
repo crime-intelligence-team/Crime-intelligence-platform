@@ -29,9 +29,9 @@ from app.core.config import settings
 from app.models.base import CLASSIFICATION_RANK
 from app.models.base import ClassificationLevel as ModelClassificationLevel
 from app.models.entities import Attachment, Case, Officer
-from app.models.governance import AuditLogEntry
 from app.schemas.cases import AttachmentSummary
 from app.schemas.common import ClassificationLevel
+from app.services import audit_service
 from app.services.access_exception_service import exempt_case_ids
 from app.services.district_service import get_accessible_district_ids
 
@@ -183,15 +183,15 @@ def get_attachment_for_download(
     if attachment is None:
         return None
 
-    db.add(
-        AuditLogEntry(
-            actor_id=officer.id,
-            action="attachment_downloaded",
-            resource_type="attachment",
-            resource_id=str(attachment.id),
-            ip_address=ip_address,
-            detail=json.dumps({"case_id": str(case_id), "filename": attachment.filename}),
-        )
+    audit_service.write_audit_log(
+        db,
+        actor=officer,
+        action="attachment_downloaded",
+        module=audit_service.MODULE_CASES,
+        resource_type="attachment",
+        resource_id=str(attachment.id),
+        ip_address=ip_address,
+        detail=json.dumps({"case_id": str(case_id), "filename": attachment.filename}),
     )
     db.commit()
     return attachment
