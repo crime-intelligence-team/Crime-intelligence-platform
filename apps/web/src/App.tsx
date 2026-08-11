@@ -26,7 +26,6 @@ import GovernanceSecurity   from './pages/GovernanceSecurity'
 import GovernanceIntegrity  from './pages/GovernanceIntegrity'
 import GovernanceAudit      from './pages/GovernanceAudit'
 import GovernanceProtocols  from './pages/GovernanceProtocols'
-import GovernanceDirectives from './pages/GovernanceDirectives'
 import GovernanceAccess     from './pages/GovernanceAccess'
 import EntityResolution     from './pages/EntityResolution'
 
@@ -61,12 +60,11 @@ export default function App() {
           {/* Analytics */}
           <Route path="/analytics" element={<ThreatAnalytics />} />
 
-          {/* Governance — all 6 sub-routes */}
+          {/* Governance — all 5 sub-routes */}
           <Route path="/governance"             element={<GovernanceSecurity />} />
           <Route path="/governance/integrity"   element={<GovernanceIntegrity />} />
           <Route path="/governance/audit"       element={<GovernanceAudit />} />
           <Route path="/governance/protocols"   element={<GovernanceProtocols />} />
-          <Route path="/governance/directives"  element={<GovernanceDirectives />} />
           <Route path="/governance/access"      element={<GovernanceAccess />} />
           <Route path="/governance/resolution"  element={<EntityResolution />} />
 

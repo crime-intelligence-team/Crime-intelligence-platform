@@ -4,8 +4,7 @@ const TABS = [
   { label: 'Security',   to: '/governance'             },
   { label: 'Reviews',    to: '/governance/integrity'   },
   { label: 'Audit Logs', to: '/governance/audit'       },
-  { label: 'Protocols',  to: '/governance/protocols'   },
-  { label: 'Directives', to: '/governance/directives'  },
+  { label: 'Directory',  to: '/governance/protocols'   },
   { label: 'Access',     to: '/governance/access'      },
   { label: 'Resolution', to: '/governance/resolution'  },
 ]

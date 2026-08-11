@@ -2,8 +2,8 @@ import { NavLink, Link, useLocation } from 'react-router-dom'
 import {
   ClipboardList, Map, BarChart3, Shield,
   HelpCircle, Activity, AlertTriangle, Globe, LayoutGrid,
-  Share2, Database, TriangleAlert, Settings, Terminal,
-  Download, FileText, Lock, Eye, ArrowLeft, Merge,
+  Share2, Database, TriangleAlert, Terminal,
+  Download, FileText, Lock, Eye, ArrowLeft, Merge, Users,
 } from 'lucide-react'
 import { useAppContext } from '../../context/AppContext'
 
@@ -34,8 +34,7 @@ const GOVERNANCE_NAV = [
   { to: '/governance',             icon: Shield,    label: 'Redaction Policies'    },
   { to: '/governance/integrity',   icon: Eye,       label: 'Confidence Reviews'    },
   { to: '/governance/audit',       icon: FileText,  label: 'Global Audit'          },
-  { to: '/governance/protocols',   icon: Settings,  label: 'Policy Engine'         },
-  { to: '/governance/directives',  icon: Terminal,  label: 'Directives'            },
+  { to: '/governance/protocols',   icon: Users,     label: 'Officer Directory'     },
   { to: '/governance/access',      icon: Lock,      label: 'Access Exceptions'     },
   { to: '/governance/resolution',  icon: Merge,     label: 'Entity Resolution'     },
 ]
