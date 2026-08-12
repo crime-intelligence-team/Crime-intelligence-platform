@@ -1,3 +1,4 @@
+from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -166,6 +167,50 @@ def get_zone(
             },
         )
     return result
+
+
+@router.get("/zones/{zone_id}/history", response_model=PaginatedResponse[ZoneRiskOut])
+def get_zone_history(
+    zone_id: str,
+    date_from: datetime | None = Query(None),
+    date_to: datetime | None = Query(None),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    officer: Officer = Depends(get_current_officer),
+    _pm: Officer = Depends(require_permissions("map:view")),
+    db: Session = Depends(get_db),
+):
+    """Every persisted scoring run for a zone, newest first, optionally
+    bounded to a run_timestamp range."""
+    try:
+        zone_uuid = UUID(zone_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": {
+                    "code": "invalid_uuid",
+                    "message": "Zone ID is not a valid UUID",
+                    "details": None,
+                }
+            },
+        )
+    try:
+        items = risk_service.list_zone_score_history(
+            db=db, zone_id=zone_uuid, officer=officer, date_from=date_from, date_to=date_to
+        )
+    except risk_service.ZoneNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "error": {
+                    "code": "zone_not_found",
+                    "message": "Zone not found",
+                    "details": None,
+                }
+            },
+        )
+    return PaginatedResponse(items=items, total=len(items), page=page, page_size=page_size)
 
 
 @router.post("/zones/{district_id}/run-scoring", response_model=PaginatedResponse[ZoneRiskOut])

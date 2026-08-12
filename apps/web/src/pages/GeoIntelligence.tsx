@@ -78,7 +78,7 @@ const confidenceLabel: Record<string, string> = {
 
 function GeoPanel({ children }: { children: React.ReactNode }) {
   return (
-    <div className="absolute top-4 right-4 w-[340px] bg-bg-elevated/85 backdrop-blur-[16px] border border-border-default rounded-lg shadow-[0_8px_24px_rgba(0,0,0,0.4)] z-[999] p-6 flex flex-col gap-6 animate-slide-in-right">
+    <div className="absolute top-4 right-4 w-[340px] max-h-[calc(100%-2rem)] overflow-y-auto bg-bg-elevated/85 backdrop-blur-[16px] border border-border-default rounded-lg shadow-[0_8px_24px_rgba(0,0,0,0.4)] z-[999] p-6 flex flex-col gap-6 animate-slide-in-right">
       {children}
     </div>
   )
@@ -192,6 +192,24 @@ function ZoneInspector({ district, zones, onClose, onRunScoring, scoring }: {
   const [selectedZone, setSelectedZone] = useState<ZoneRiskOut | null>(zones[0] ?? null)
   const zone = selectedZone
   const scoreColorClass = (s: number) => (s >= 75 ? 'text-severity-critical' : s >= 50 ? 'text-severity-high' : 'text-severity-low')
+
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+  const [history, setHistory] = useState<ZoneRiskOut[] | null>(null)
+  const [historyLoading, setHistoryLoading] = useState(false)
+
+  useEffect(() => { setHistory(null) }, [zone?.id])
+
+  async function loadHistory() {
+    if (!zone) return
+    setHistoryLoading(true)
+    try {
+      const res = await mapApi.zoneHistory(zone.id, dateFrom || undefined, dateTo || undefined)
+      setHistory(res.items)
+    } finally {
+      setHistoryLoading(false)
+    }
+  }
   return (
     <GeoPanel>
       <GeoPanelHeader eyebrow="Zone Inspector" icon={AlertTriangle} title={district.name.toUpperCase()} onClose={onClose} />
@@ -253,6 +271,42 @@ function ZoneInspector({ district, zones, onClose, onRunScoring, scoring }: {
 
               <GeoPanelDataRow label="Reviewed" value={zone.analyst_review_status ?? '—'} />
               <GeoPanelDataRow label="Scored At" value={<span className="font-mono text-[11px]">{new Date(zone.run_timestamp).toLocaleString()}</span>} />
+
+              <div className="flex flex-col gap-2 pt-2 border-t border-border-subtle">
+                <p className="text-[12px] uppercase font-semibold text-text-secondary tracking-wider">Scoring History</p>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="date"
+                    value={dateFrom}
+                    onChange={e => setDateFrom(e.target.value)}
+                    className="flex-1 min-w-0 bg-bg-surface-2/75 border border-border-subtle rounded-md px-2 py-1.5 text-[11px] text-text-primary"
+                  />
+                  <span className="text-text-tertiary text-[11px]">to</span>
+                  <input
+                    type="date"
+                    value={dateTo}
+                    onChange={e => setDateTo(e.target.value)}
+                    className="flex-1 min-w-0 bg-bg-surface-2/75 border border-border-subtle rounded-md px-2 py-1.5 text-[11px] text-text-primary"
+                  />
+                </div>
+                <Button variant="secondary" size="sm" onClick={loadHistory} disabled={historyLoading}>
+                  {historyLoading ? 'Loading…' : 'Show History'}
+                </Button>
+                {history && (
+                  history.length === 0 ? (
+                    <p className="text-[11px] text-text-tertiary py-2 text-center">No scoring runs in this range.</p>
+                  ) : (
+                    <div className="flex flex-col max-h-40 overflow-y-auto">
+                      {history.map(h => (
+                        <div key={h.score_id ?? h.run_timestamp} className="flex items-center justify-between py-1.5 border-b border-border-subtle last:border-0 text-[11px]">
+                          <span className="font-mono text-text-secondary">{new Date(h.run_timestamp).toLocaleString()}</span>
+                          <span className={scoreColorClass(h.score)}>{h.score}/100</span>
+                        </div>
+                      ))}
+                    </div>
+                  )
+                )}
+              </div>
             </>
           )}
         </>

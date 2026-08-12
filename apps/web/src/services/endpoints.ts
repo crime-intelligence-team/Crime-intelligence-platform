@@ -79,6 +79,8 @@ export const mapApi = {
   zones: (districtId: string, page = 1, pageSize = 100) =>
     get<PaginatedResponse<ZoneRiskOut>>('/zones', { district_id: districtId, page, page_size: pageSize }),
   zone: (id: string) => get<ZoneRiskOut>(`/zones/${id}`),
+  zoneHistory: (zoneId: string, dateFrom?: string, dateTo?: string) =>
+    get<PaginatedResponse<ZoneRiskOut>>(`/zones/${zoneId}/history`, { date_from: dateFrom, date_to: dateTo }),
   runZoneScoring: (districtId: string) =>
     post<PaginatedResponse<ZoneRiskOut>>(`/zones/${districtId}/run-scoring`),
 }

@@ -158,6 +158,32 @@ def list_zone_scores(db: Session, district_id: UUID, officer: Officer) -> list[Z
     return [_row_to_output(zone, row) for row, zone in rows]
 
 
+def list_zone_score_history(
+    db: Session,
+    zone_id: UUID,
+    officer: Officer,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+) -> list[ZoneRiskOut]:
+    """Every persisted scoring run for a zone, newest first, optionally bounded
+    to a run_timestamp range. The score itself has no time dimension (pure
+    address density — see compute_zone_score) so this browses historical
+    snapshots rather than filtering the scoring model."""
+    zone = db.query(Zone).filter(Zone.id == zone_id).first()
+    if zone is None:
+        raise ZoneNotFoundError(zone_id)
+    accessible = get_accessible_district_ids(officer)
+    if accessible is not None and zone.district_id not in accessible:
+        raise ZoneNotFoundError(zone_id)
+    query = db.query(ZoneRiskScore).filter(ZoneRiskScore.zone_id == zone_id)
+    if date_from:
+        query = query.filter(ZoneRiskScore.run_timestamp >= date_from)
+    if date_to:
+        query = query.filter(ZoneRiskScore.run_timestamp <= date_to)
+    rows = query.order_by(ZoneRiskScore.run_timestamp.desc()).all()
+    return [_row_to_output(zone, row) for row in rows]
+
+
 def _row_to_output(zone: Zone, row: ZoneRiskScore) -> ZoneRiskOut:
     top_factors = [
         ZoneTopFactor(**factor)
