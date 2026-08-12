@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { MapContainer, TileLayer, CircleMarker, Polygon, Tooltip } from 'react-leaflet'
+import { MapContainer, TileLayer, CircleMarker, Polygon, GeoJSON, Tooltip } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import { X, AlertTriangle, MapPin, RefreshCw, ExternalLink, Navigation } from 'lucide-react'
 import { Button } from '../components/ui/Button'
@@ -355,6 +355,28 @@ export default function GeoIntelligence() {
               zoomControl={false}
             >
               <TileLayer url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" />
+
+              {/* District boundaries: real polygon/multipolygon geometry (GeoJSON
+                  handles both, unlike polygonLatLngs which only understands Polygon).
+                  Drawn under the zone choropleth and district dots so both remain
+                  the primary click targets; the boundary itself is also clickable. */}
+              {districts.map(d => {
+                if (!d.geometry) return null
+                const color = districtColor(d)
+                return (
+                  <GeoJSON
+                    key={d.id}
+                    data={d.geometry as any}
+                    style={{ color, weight: 1.5, fillColor: color, fillOpacity: mode === 'zone' ? 0.05 : 0.12 }}
+                    eventHandlers={{
+                      click: () => {
+                        if (mode === 'zone') { setSelectedZoneDistrict(d); setSelectedDistrict(null) }
+                        else { setSelectedDistrict(d); setSelectedZoneDistrict(null) }
+                      },
+                    }}
+                  />
+                )
+              })}
 
               {/* Zone choropleth: real zone polygons colored by risk score.
                   Zones with no geometry (or unscored) contribute nothing here —
