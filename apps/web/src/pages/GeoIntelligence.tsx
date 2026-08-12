@@ -63,6 +63,16 @@ const classificationLabel: Record<string, string> = {
   sealed: 'Sealed',
 }
 const scoreColor = (score: number) => (score >= 75 ? '#ef4444' : score >= 50 ? '#f59e0b' : '#22c55e')
+const confidenceColor: Record<string, string> = {
+  unconfirmed: '#64748b',
+  probable: '#3b82f6',
+  verified: '#14b8a6',
+}
+const confidenceLabel: Record<string, string> = {
+  unconfirmed: 'Unconfirmed',
+  probable: 'Probable',
+  verified: 'Verified',
+}
 
 // ── Shared Geo Panels Architecture ────────────────────────────────────────────
 
@@ -218,7 +228,14 @@ function ZoneInspector({ district, zones, onClose, onRunScoring, scoring }: {
                     <span className={`font-semibold uppercase ${scoreColorClass(zone.score)}`}>
                       {zone.score >= 75 ? 'Critical' : zone.score >= 50 ? 'Elevated' : 'Low'}
                     </span>
-                    <span className="text-text-secondary">· {zone.confidence.band}</span>
+                    <span className="text-text-secondary flex items-center gap-1.5">
+                      ·
+                      <span
+                        className="w-1.5 h-1.5 rounded-full inline-block"
+                        style={{ background: confidenceColor[zone.confidence.band] ?? '#64748b' }}
+                      />
+                      {confidenceLabel[zone.confidence.band] ?? zone.confidence.band}
+                    </span>
                   </span>
                 }
               />
@@ -337,6 +354,14 @@ export default function GeoIntelligence() {
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-severity-critical inline-block" /> Critical
               <span className="w-2 h-2 rounded-full bg-severity-elevated inline-block ml-1" /> Elevated
+            </div>
+            <div className="flex items-center gap-2 border-l border-sentinel-700 pl-3">
+              {(['unconfirmed', 'probable', 'verified'] as const).map(band => (
+                <span key={band} className="flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full inline-block" style={{ background: confidenceColor[band] }} />
+                  {confidenceLabel[band]}
+                </span>
+              ))}
             </div>
           </div>
         )}
