@@ -21,6 +21,7 @@ export interface CaseSummary {
   classification: ClassificationLevel
   district_id: string | null
   created_at: string | null
+  is_pinned: boolean
 }
 
 export interface CaseDetail extends CaseSummary {

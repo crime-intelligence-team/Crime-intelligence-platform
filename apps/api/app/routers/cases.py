@@ -248,6 +248,32 @@ def _case_not_found() -> HTTPException:
     )
 
 
+@router.post("/{case_id}/pin", response_model=CaseSummary)
+def pin_case(
+    case_id: str,
+    officer: Officer = Depends(get_current_officer),
+    _pm: Officer = Depends(require_permissions("case:read")),
+    db: Session = Depends(get_db),
+):
+    result = case_service.pin_case(db=db, officer=officer, case_id=_case_uuid_or_422(case_id))
+    if result is None:
+        raise _case_not_found()
+    return result
+
+
+@router.delete("/{case_id}/pin", response_model=CaseSummary)
+def unpin_case(
+    case_id: str,
+    officer: Officer = Depends(get_current_officer),
+    _pm: Officer = Depends(require_permissions("case:read")),
+    db: Session = Depends(get_db),
+):
+    result = case_service.unpin_case(db=db, officer=officer, case_id=_case_uuid_or_422(case_id))
+    if result is None:
+        raise _case_not_found()
+    return result
+
+
 @router.get("/{case_id}/team", response_model=list[CaseTeamMemberOut])
 def list_team_members(
     case_id: str,

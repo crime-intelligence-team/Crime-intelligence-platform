@@ -146,6 +146,18 @@ class CaseTeamMember(Base, TimestampMixin):
     removed_at = Column(DateTime(timezone=True), nullable=True)
 
 
+class CasePin(Base, TimestampMixin):
+    """Per-officer case pin (Case Workspace's pin control — previously a
+    bare icon with no backing state at all). Personal organization, not a
+    collaborative record: hard-deleted on unpin, no removed_at history."""
+
+    __tablename__ = "case_pins"
+
+    id = uuid_pk_column()
+    case_id = Column(UUID(as_uuid=True), ForeignKey("cases.id"), nullable=False)
+    officer_id = Column(UUID(as_uuid=True), ForeignKey("officers.id"), nullable=False)
+
+
 class AuditLogEntry(Base, TimestampMixin):
     """Append-only log: every search, filter, view, export, note action, approval (brief section 9).
 

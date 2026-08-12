@@ -115,6 +115,8 @@ export const casesApi = {
   export: (caseId: string, payload?: ExportRequest) => post<ExportResponse>(`/cases/${caseId}/export`, payload),
   updateStatus: (caseId: string, status: string) =>
     patch<CaseDetail>(`/cases/${caseId}/status`, { status }),
+  pin: (caseId: string) => post<CaseSummary>(`/cases/${caseId}/pin`),
+  unpin: (caseId: string) => del<CaseSummary>(`/cases/${caseId}/pin`),
   team: (caseId: string) => get<CaseTeamMemberOut[]>(`/cases/${caseId}/team`),
   addTeamMember: (caseId: string, officerId: string) =>
     post<CaseTeamMemberOut>(`/cases/${caseId}/team`, { officer_id: officerId }),

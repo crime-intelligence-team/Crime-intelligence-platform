@@ -35,6 +35,7 @@ class CaseSummary(BaseModel):
     classification: ClassificationLevel
     district_id: str | None
     created_at: str | None
+    is_pinned: bool
 
 
 class CaseDetail(CaseSummary):

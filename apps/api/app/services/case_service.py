@@ -23,14 +23,14 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from geoalchemy2 import functions as geo_func
-from sqlalchemy import func, or_, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.classification import ROLE_MAX_CLASSIFICATION, classification_filter
 from app.models.base import CLASSIFICATION_RANK
 from app.models.base import ClassificationLevel as ModelClassificationLevel
 from app.models.entities import Address, Case, District, Note, Officer, Role, Zone
-from app.models.governance import CaseTeamMember
+from app.models.governance import CasePin, CaseTeamMember
 from app.schemas.common import ClassificationLevel
 from app.schemas.cases import (
     CaseCreate,
@@ -128,7 +128,7 @@ def _visible_case_stmt(
     return stmt
 
 
-def _to_summary(case: Case) -> CaseSummary:
+def _to_summary(case: Case, is_pinned: bool = False) -> CaseSummary:
     return CaseSummary(
         id=str(case.id),
         case_number=case.case_number,
@@ -137,7 +137,25 @@ def _to_summary(case: Case) -> CaseSummary:
         classification=ClassificationLevel(case.classification.value),
         district_id=str(case.district_id) if case.district_id else None,
         created_at=str(case.created_at) if case.created_at else None,
+        is_pinned=is_pinned,
     )
+
+
+def _is_pinned(db: Session, case_id: UUID, officer_id: UUID) -> bool:
+    return db.execute(
+        select(CasePin.id).where(CasePin.case_id == case_id, CasePin.officer_id == officer_id)
+    ).scalar_one_or_none() is not None
+
+
+def _pinned_case_ids(db: Session, officer_id: UUID, case_ids: list[UUID]) -> set[UUID]:
+    if not case_ids:
+        return set()
+    rows = db.execute(
+        select(CasePin.case_id).where(
+            CasePin.officer_id == officer_id, CasePin.case_id.in_(case_ids)
+        )
+    ).scalars().all()
+    return set(rows)
 
 
 def _resolve_zone_id(db: Session, address_id: UUID | None) -> UUID | None:
@@ -157,10 +175,11 @@ def _resolve_zone_id(db: Session, address_id: UUID | None) -> UUID | None:
     ).scalars().first()
 
 
-def _to_detail(db: Session, case: Case) -> CaseDetail:
+def _to_detail(db: Session, case: Case, officer: Officer) -> CaseDetail:
     zone_id = _resolve_zone_id(db, case.address_id)
+    is_pinned = _is_pinned(db, case.id, officer.id)
     return CaseDetail(
-        **_to_summary(case).model_dump(),
+        **_to_summary(case, is_pinned=is_pinned).model_dump(),
         summary=case.summary,
         lead_officer_id=str(case.lead_officer_id) if case.lead_officer_id else None,
         address_id=str(case.address_id) if case.address_id else None,
@@ -194,7 +213,8 @@ def list_cases(
         .offset((page - 1) * page_size)
         .limit(page_size)
     ).scalars().all()
-    return [_to_summary(c) for c in rows], total
+    pinned_ids = _pinned_case_ids(db, officer.id, [c.id for c in rows])
+    return [_to_summary(c, is_pinned=c.id in pinned_ids) for c in rows], total
 
 
 def get_case(
@@ -215,7 +235,7 @@ def get_case(
             exempt_case_ids=exempt_case_ids(db, officer),
         ).where(Case.id == case_id)
     ).scalar_one_or_none()
-    return _to_detail(db, case) if case is not None else None
+    return _to_detail(db, case, officer) if case is not None else None
 
 
 def create_case(
@@ -284,7 +304,7 @@ def create_case(
     db.add(case)
     db.commit()
     db.refresh(case)
-    return _to_detail(db, case)
+    return _to_detail(db, case, officer)
 
 
 def update_case_status(
@@ -337,7 +357,43 @@ def update_case_status(
         )
         db.commit()
         db.refresh(case)
-    return _to_detail(db, case)
+    return _to_detail(db, case, officer)
+
+
+def pin_case(db: Session, officer: Officer, case_id: UUID) -> CaseSummary | None:
+    """Pin a case for this officer (case:read — personal organization, not
+    a change to the case itself). Idempotent: pinning an already-pinned
+    case is a no-op, not an error. None -> case invisible (router 404)."""
+    visible_tiers = classification_filter(officer.role)
+    accessible = get_accessible_district_ids(officer)
+    case = db.execute(
+        _visible_case_stmt(
+            visible_tiers, accessible, exempt_case_ids=exempt_case_ids(db, officer)
+        ).where(Case.id == case_id)
+    ).scalar_one_or_none()
+    if case is None:
+        return None
+    if not _is_pinned(db, case_id, officer.id):
+        db.add(CasePin(case_id=case_id, officer_id=officer.id))
+        db.commit()
+    return _to_summary(case, is_pinned=True)
+
+
+def unpin_case(db: Session, officer: Officer, case_id: UUID) -> CaseSummary | None:
+    """Unpin a case for this officer. Idempotent: unpinning a case that
+    isn't pinned is a no-op. None -> case invisible (router 404)."""
+    visible_tiers = classification_filter(officer.role)
+    accessible = get_accessible_district_ids(officer)
+    case = db.execute(
+        _visible_case_stmt(
+            visible_tiers, accessible, exempt_case_ids=exempt_case_ids(db, officer)
+        ).where(Case.id == case_id)
+    ).scalar_one_or_none()
+    if case is None:
+        return None
+    db.execute(delete(CasePin).where(CasePin.case_id == case_id, CasePin.officer_id == officer.id))
+    db.commit()
+    return _to_summary(case, is_pinned=False)
 
 
 def _to_team_member_out(officer: Officer, is_lead: bool, added_at) -> CaseTeamMemberOut:
@@ -731,7 +787,7 @@ def export_case(
             role=officer.role.value,
         ),
         classification=ClassificationLevel(highest.value),
-        case=_to_detail(db, case),
+        case=_to_detail(db, case, officer),
         notes=note_summaries,
     )
 

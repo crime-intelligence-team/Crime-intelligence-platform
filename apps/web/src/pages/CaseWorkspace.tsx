@@ -40,7 +40,7 @@ function ClassificationBadge({ level }: { level: ClassificationLevel }) {
   )
 }
 
-function CaseRow({ c, isActive, onClick }: { c: CaseSummary; isActive: boolean; onClick: () => void }) {
+function CaseRow({ c, isActive, onClick, onTogglePin }: { c: CaseSummary; isActive: boolean; onClick: () => void; onTogglePin: (c: CaseSummary) => void }) {
   const sc = statusConfig[c.status] ?? { label: c.status, icon: Clock, color: 'text-text-tertiary' }
   const StatusIcon = sc.icon
   return (
@@ -61,9 +61,16 @@ function CaseRow({ c, isActive, onClick }: { c: CaseSummary; isActive: boolean; 
       <div className="text-[11px] text-text-tertiary truncate">
         {c.created_at ? new Date(c.created_at).toLocaleDateString() : '—'}
       </div>
-      <div className="flex justify-end p-1 rounded hover:bg-bg-surface-hover transition-colors">
-        <Pin className="w-3.5 h-3.5 text-text-disabled group-hover:text-brand-500 transition-colors" />
-      </div>
+      <button
+        onClick={e => { e.stopPropagation(); onTogglePin(c) }}
+        title={c.is_pinned ? 'Unpin case' : 'Pin case'}
+        className="flex justify-end p-1 rounded hover:bg-bg-surface-hover transition-colors"
+      >
+        <Pin
+          className={`w-3.5 h-3.5 transition-colors ${c.is_pinned ? 'text-brand-500' : 'text-text-disabled group-hover:text-brand-500'}`}
+          fill={c.is_pinned ? 'currentColor' : 'none'}
+        />
+      </button>
     </div>
   )
 }
@@ -189,7 +196,10 @@ export default function CaseWorkspace() {
   const { activeCaseId, setActiveCase } = useActiveCase()
   const [showCreate, setShowCreate] = useState(false)
   const { data: page, loading, error, refetch } = useApi(() => casesApi.list())
-  const cases = page?.items ?? []
+  const [pinOverrides, setPinOverrides] = useState<Record<string, boolean>>({})
+  const cases = (page?.items ?? [])
+    .map(c => (c.id in pinOverrides ? { ...c, is_pinned: pinOverrides[c.id] } : c))
+    .sort((a, b) => Number(b.is_pinned) - Number(a.is_pinned))
 
   // "Open" here means not yet closed (matches the backend KPI: open,
   // under_investigation and pending_review are all still active work).
@@ -202,6 +212,16 @@ export default function CaseWorkspace() {
   function handleCaseClick(c: CaseSummary) {
     setActiveCase(c.id)
     navigate(`/cases/${c.id}`)
+  }
+
+  async function handleTogglePin(c: CaseSummary) {
+    const next = !c.is_pinned
+    setPinOverrides(o => ({ ...o, [c.id]: next }))
+    try {
+      await (next ? casesApi.pin(c.id) : casesApi.unpin(c.id))
+    } catch {
+      setPinOverrides(o => ({ ...o, [c.id]: c.is_pinned }))
+    }
   }
 
   function handleCreated(id: string) {
@@ -276,6 +296,7 @@ export default function CaseWorkspace() {
               c={c}
               isActive={activeCaseId === c.id}
               onClick={() => handleCaseClick(c)}
+              onTogglePin={handleTogglePin}
             />
           ))}
           {cases.length > 0 && (
