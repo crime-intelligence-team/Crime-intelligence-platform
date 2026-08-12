@@ -45,6 +45,7 @@ import type {
   OfficerManagerUpdate,
   OfficerSummary,
   PaginatedResponse,
+  PathOut,
   PriorityEntity,
   RedactionPolicyCreate,
   RedactionPolicyResponse,
@@ -95,6 +96,8 @@ export const networkApi = {
   entityRelationships: (id: string, page = 1, pageSize = 50) =>
     get<PaginatedResponse<RelationshipOut>>(`/entities/${id}/relationships`, { page, page_size: pageSize }),
   relationship: (id: string) => get<RelationshipOut>(`/relationships/${id}`),
+  paths: (entityId: string, targetId: string, maxHops = 4, limit = 10) =>
+    get<PathOut[]>(`/entities/${entityId}/paths/${targetId}`, { max_hops: maxHops, limit }),
 }
 
 // ─── Cases ────────────────────────────────────────────────────────────────────

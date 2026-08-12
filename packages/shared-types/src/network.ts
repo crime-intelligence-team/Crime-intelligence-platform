@@ -42,3 +42,12 @@ export interface RelationshipOut {
   effective_to: string | null
   case_id: string | null
 }
+
+/** One shortest path between two entities. `relationships` is the ordered
+ * hop sequence; length = relationships.length. */
+export interface PathOut {
+  source_entity: EntitySummary
+  target_entity: EntitySummary
+  length: number
+  relationships: RelationshipOut[]
+}

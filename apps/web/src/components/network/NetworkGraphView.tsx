@@ -1,13 +1,14 @@
 import { useState, useEffect, useCallback } from 'react'
 import CytoscapeComponent from 'react-cytoscapejs'
 import cytoscape from 'cytoscape'
-import { X, ZoomIn, ZoomOut, AlertTriangle, ArrowRight, ArrowLeft, Search, Loader2 } from 'lucide-react'
+import { X, ZoomIn, ZoomOut, AlertTriangle, ArrowRight, ArrowLeft, Search, Loader2, Route } from 'lucide-react'
 import { ErrorBoundary } from '../ui/ErrorBoundary'
 import { SkeletonGraph } from '../ui/Skeletons'
 import { useApi } from '../../hooks/useApi'
 import { useAppContext } from '../../context/AppContext'
 import { networkApi } from '../../services/endpoints'
-import type { EntityDetail, EntitySummary, EntityType, RedactedField, RelationshipOut } from '@cip/shared-types'
+import { ApiError } from '../../services/client'
+import type { EntityDetail, EntitySummary, EntityType, PathOut, RedactedField, RelationshipOut } from '@cip/shared-types'
 
 function fieldText(v: string | RedactedField | null | undefined): string {
   if (v == null) return '—'
@@ -129,6 +130,136 @@ function useRelationships(id: string) {
   return { data }
 }
 
+/** Reconstructs the ordered entity chain for a path — safer than trusting
+ * each hop's own source/target order, since a hop's direction can run
+ * either way along an undirected traversal (see PathOut's docstring). */
+function pathChain(path: PathOut): EntitySummary[] {
+  const chain: EntitySummary[] = [path.source_entity]
+  let current = path.source_entity
+  for (const r of path.relationships) {
+    const next = r.source_entity.id === current.id ? r.target_entity : r.source_entity
+    chain.push(next)
+    current = next
+  }
+  return chain
+}
+
+// ── Path finder ───────────────────────────────────────────────────────────────
+function PathFinder({ sourceId }: { sourceId: string }) {
+  const [query, setQuery] = useState('')
+  const [debounced, setDebounced] = useState('')
+  const [target, setTarget] = useState<EntitySummary | null>(null)
+  const [focused, setFocused] = useState(false)
+  const [result, setResult] = useState<PathOut[] | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(query), 300)
+    return () => clearTimeout(t)
+  }, [query])
+
+  const { data: options } = useApi(
+    () => (debounced.trim().length >= 2 ? networkApi.search(debounced.trim()) : Promise.resolve(null)),
+    [debounced],
+  )
+  const candidates = (options?.items ?? []).filter(e => e.id !== sourceId)
+
+  function pick(entity: EntitySummary) {
+    setTarget(entity)
+    setQuery(entity.label)
+    setFocused(false)
+    setResult(null)
+    setError(null)
+  }
+
+  async function findPath() {
+    if (!target) return
+    setLoading(true)
+    setError(null)
+    setResult(null)
+    try {
+      setResult(await networkApi.paths(sourceId, target.id))
+    } catch (err) {
+      if (err instanceof ApiError && err.code === 'entity_not_found') {
+        setError('Target entity not found, or not visible at your access tier.')
+      } else if (err instanceof ApiError && err.code === 'graph_unavailable') {
+        setError('Relationship graph is temporarily unavailable. Try again shortly.')
+      } else if (err instanceof ApiError && err.code === 'invalid_path_request') {
+        setError('Source and target must be different entities.')
+      } else {
+        setError(err instanceof Error ? err.message : 'Failed to find a path.')
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div>
+      <p className="section-label mb-2">Find Path To…</p>
+      <div className="relative">
+        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-sentinel-500 pointer-events-none" />
+        <input
+          value={query}
+          onChange={e => { setQuery(e.target.value); setTarget(null); setResult(null); setError(null) }}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setTimeout(() => setFocused(false), 150)}
+          placeholder="Search entity by name…"
+          className="w-full pl-8 pr-3 py-1.5 bg-surface-card border border-surface-border rounded-lg text-xs text-sentinel-100 placeholder-sentinel-500 focus:outline-none focus:border-accent-blue/40"
+        />
+        {focused && !target && candidates.length > 0 && (
+          <div className="absolute z-20 mt-1 w-full max-h-48 overflow-y-auto bg-surface-raised border border-surface-border rounded-lg shadow-lg">
+            {candidates.map(e => (
+              <button key={e.id} onMouseDown={() => pick(e)}
+                className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left text-xs hover:bg-surface-hover transition-colors">
+                <span className="truncate text-sentinel-200">{e.label}</span>
+                <span className={`text-[10px] capitalize shrink-0 ml-2 ${typeColor[e.type]}`}>{e.type}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <button
+        onClick={findPath}
+        disabled={!target || loading}
+        className="mt-2 w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-accent-blue/10 border border-accent-blue/30 text-accent-blue text-xs font-semibold hover:bg-accent-blue/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+        {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Route className="w-3.5 h-3.5" />} Find Path
+      </button>
+
+      {error && <p className="mt-2 text-[11px] text-severity-critical">{error}</p>}
+
+      {result && result.length === 0 && !error && (
+        <p className="mt-2 text-[11px] text-sentinel-500">No path found within the graph's search bounds.</p>
+      )}
+
+      {result && result.length > 0 && (
+        <div className="mt-2 space-y-2">
+          {result.map((path, i) => {
+            const chain = pathChain(path)
+            return (
+              <div key={i} className="bg-surface-card border border-surface-border rounded-lg p-2.5">
+                <p className="text-[10px] text-sentinel-500 mb-1.5">{path.length} hop{path.length === 1 ? '' : 's'}</p>
+                <div className="flex flex-col gap-1">
+                  {path.relationships.map((r, j) => (
+                    <div key={r.id} className="flex items-center gap-1.5 text-[11px] text-sentinel-300">
+                      <span className="truncate">{chain[j].label}</span>
+                      <ArrowRight className="w-3 h-3 text-sentinel-500 shrink-0" />
+                      <span className="text-sentinel-500 shrink-0">{r.type}</span>
+                      <ArrowRight className="w-3 h-3 text-sentinel-500 shrink-0" />
+                      <span className="truncate">{chain[j + 1].label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Node explorer panel ───────────────────────────────────────────────────────
 export function NodeExplorerPanel({ entityId, onClose }: { entityId: string; onClose: () => void }) {
   const { addAlert } = useAppContext()
@@ -226,6 +357,8 @@ export function NodeExplorerPanel({ entityId, onClose }: { entityId: string; onC
                 </div>
               ))}
             </div>
+
+            <PathFinder sourceId={detail.id} />
           </>
         )}
       </div>
