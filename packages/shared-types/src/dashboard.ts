@@ -51,6 +51,7 @@ export interface DashboardResponse {
   kpis: KpiStrip
   trends: TrendSeries[]
   hotspots: Hotspot[]
+  hotspots_window: string
   priority_entities: PriorityEntity[]
   alerts: Alert[]
 }

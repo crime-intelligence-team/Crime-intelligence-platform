@@ -63,5 +63,6 @@ class DashboardResponse(BaseModel):
     kpis: KpiStrip
     trends: list[TrendSeries]
     hotspots: list[Hotspot]
+    hotspots_window: str  # "7d" | "30d" | "90d" — echoes the window actually applied
     priority_entities: list[PriorityEntity]
     alerts: list[Alert]

@@ -38,11 +38,11 @@ export default function RegionalDashboard() {
     [id],
   )
   const { data: dashboard, loading: dashLoading } = useApi(
-    () => (id ? dashboardApi.byRegion(id) : Promise.resolve(null)),
-    [id],
+    () => (id ? dashboardApi.byRegion(id, window) : Promise.resolve(null)),
+    [id, window],
   )
 
-  if (districtLoading || dashLoading) {
+  if (districtLoading || (dashLoading && !dashboard)) {
     return (
       <div className="h-full overflow-y-auto p-6 flex flex-col gap-4 animate-pulse">
         <div className="h-7 w-64 bg-bg-surface-2 rounded-lg" />
@@ -146,7 +146,9 @@ export default function RegionalDashboard() {
           <div className="bg-bg-surface-2 border border-border-subtle rounded-xl p-5">
             <div className="flex items-center gap-2 mb-4">
               <ShieldAlert className="w-4 h-4 text-severity-critical" />
-              <h2 className="text-sm font-semibold text-text-primary">Regional Hotspots (30-day window)</h2>
+              <h2 className="text-sm font-semibold text-text-primary">
+                Regional Hotspots ({(dashboard?.hotspots_window ?? window).replace('d', '')}-day window)
+              </h2>
             </div>
             {hotspots.length === 0 ? (
               <p className="text-xs text-text-tertiary py-4 text-center">No hotspots recorded in the trailing window.</p>

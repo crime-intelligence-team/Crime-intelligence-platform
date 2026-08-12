@@ -22,7 +22,6 @@ EVENT_TIME = func.coalesce(Case.source_timestamp, Case.created_at)
 
 TREND_WINDOWS: dict[str, int] = {"7d": 7, "30d": 30, "90d": 90}
 HOTSPOT_LIMIT = 5
-HOTSPOT_WINDOW_DAYS = 30
 
 
 def _resolve_region(db: Session, district_id: UUID, officer: Officer) -> District | None:
@@ -111,6 +110,7 @@ def _hotspots(
     db: Session,
     officer: Officer,
     visible_tiers: list[ClassificationLevel],
+    window_days: int,
 ) -> list[Hotspot]:
     """Top-N districts by incident count in the trailing window, across the
     officer's accessible jurisdiction. Granularity is district — Case has no
@@ -123,8 +123,8 @@ def _hotspots(
     # Rolling windows intentionally use raw now (partial today is ~1/30 of a
     # 30-day window — immaterial), unlike trends' single-day buckets which
     # would be 100% partial if today were included.
-    current_start = now_utc - timedelta(days=HOTSPOT_WINDOW_DAYS)
-    prev_start = now_utc - timedelta(days=HOTSPOT_WINDOW_DAYS * 2)
+    current_start = now_utc - timedelta(days=window_days)
+    prev_start = now_utc - timedelta(days=window_days * 2)
 
     current_count = func.count(Case.id).filter(EVENT_TIME >= current_start)
     prev_count = func.count(Case.id).filter(
@@ -173,9 +173,11 @@ def get_dashboard(
     db: Session,
     region_id: UUID,
     officer: Officer,
+    hotspot_window: str = "30d",
 ) -> DashboardResponse | None:
     """None means the region does not exist or is outside the officer's
-    jurisdiction (caller maps it to 404)."""
+    jurisdiction (caller maps it to 404). `hotspot_window` must be a key of
+    TREND_WINDOWS — the router validates this before calling in."""
     region = _resolve_region(db, region_id, officer)
     if region is None:
         return None
@@ -189,7 +191,8 @@ def get_dashboard(
         region_id=str(region_id),
         kpis=_kpi_strip(db, region_id, visible_tiers),
         trends=trends,
-        hotspots=_hotspots(db, officer, visible_tiers),
+        hotspots=_hotspots(db, officer, visible_tiers, TREND_WINDOWS[hotspot_window]),
+        hotspots_window=hotspot_window,
         priority_entities=[],  # stub: no PriorityEntity model exists (Phase 6)
         alerts=[],             # stub: no Alert model exists (Phase 6)
     )

@@ -85,7 +85,8 @@ export const mapApi = {
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 export const dashboardApi = {
-  byRegion: (regionId: string) => get<DashboardResponse>(`/dashboard/${regionId}`),
+  byRegion: (regionId: string, hotspotWindow?: string) =>
+    get<DashboardResponse>(`/dashboard/${regionId}`, { hotspot_window: hotspotWindow }),
 }
 
 // ─── Network / Entities ───────────────────────────────────────────────────────
