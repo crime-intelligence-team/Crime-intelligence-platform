@@ -51,6 +51,8 @@ import type {
   RedactionPolicyResponse,
   RelationshipOut,
   SearchResponse,
+  SensitiveSubjectOut,
+  SensitiveTagUpdate,
   StepUpRequest,
   StepUpResponse,
   ZoneRiskOut,
@@ -186,6 +188,9 @@ export const adminApi = {
       q?: string
     } = {},
   ) => get<PaginatedResponse<AuditLogEntry>>('/admin/audit', params),
+  sensitiveTags: () => get<SensitiveSubjectOut[]>('/admin/sensitive-tags'),
+  setSensitiveTag: (personId: string, payload: SensitiveTagUpdate) =>
+    patch<SensitiveSubjectOut>(`/admin/sensitive-tags/${personId}`, payload),
 }
 
 // ─── Officers ─────────────────────────────────────────────────────────────────

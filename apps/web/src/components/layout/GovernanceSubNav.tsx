@@ -7,6 +7,7 @@ const TABS = [
   { label: 'Directory',  to: '/governance/protocols'   },
   { label: 'Access',     to: '/governance/access'      },
   { label: 'Resolution', to: '/governance/resolution'  },
+  { label: 'Sensitive Tags', to: '/governance/sensitive-tags' },
 ]
 
 export function GovernanceSubNav() {

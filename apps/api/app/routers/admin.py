@@ -15,7 +15,8 @@ from app.schemas.confidence import (
     ConfidenceReviewResponse,
     ConfidenceReviewSubmit,
 )
-from app.services import audit_service, confidence_review_service
+from app.schemas.sensitive_tags import SensitiveSubjectOut, SensitiveTagUpdate
+from app.services import audit_service, confidence_review_service, sensitive_tag_service
 
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
 
@@ -194,3 +195,54 @@ def decide_confidence_review(
                 }
             },
         )
+
+
+@router.get("/sensitive-tags", response_model=list[SensitiveSubjectOut])
+def list_sensitive_tags(
+    _officer: Officer = Depends(require_permissions("system:configure")),
+    db: Session = Depends(get_db),
+):
+    """Every person currently tagged is_protected_subject. Admin-only
+    listing (system:configure) — the flag's enforcement elsewhere
+    (merge guard, PROTECTED-tier graph gating, alerting) is unrelated
+    and untouched by this endpoint."""
+    return sensitive_tag_service.list_protected_subjects(db=db)
+
+
+@router.patch("/sensitive-tags/{person_id}", response_model=SensitiveSubjectOut)
+def set_sensitive_tag(
+    person_id: str,
+    payload: SensitiveTagUpdate,
+    officer: Officer = Depends(require_permissions("system:configure")),
+    db: Session = Depends(get_db),
+):
+    try:
+        person_uuid = UUID(person_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": {
+                    "code": "invalid_uuid",
+                    "message": "Person ID is not a valid UUID",
+                }
+            },
+        )
+    result = sensitive_tag_service.set_protected_subject(
+        db=db,
+        officer=officer,
+        person_id=person_uuid,
+        is_protected=payload.is_protected_subject,
+        reason=payload.reason,
+    )
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "error": {
+                    "code": "person_not_found",
+                    "message": "Person not found",
+                }
+            },
+        )
+    return result
