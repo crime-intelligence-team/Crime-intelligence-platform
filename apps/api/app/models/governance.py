@@ -75,6 +75,38 @@ class RedactionPolicyDecision(Base, TimestampMixin):
     created_by_id = Column(UUID(as_uuid=True), ForeignKey("officers.id"), nullable=False)
 
 
+class DataSource(Base, TimestampMixin):
+    """Catalog of the data-source identities that ProvenanceMixin.source_name
+    (see app/models/base.py) is expected to reference. Every ingested record
+    (Address/Person/Organization/Vehicle/Device/Case) already stamps a
+    free-text source_name at ingestion — brief section 4's provenance
+    requirement — but nothing governs what those strings ARE: no registry
+    of known sources, no owner/cadence/status metadata, no admin visibility
+    into what's actively feeding the platform. This is that registry.
+
+    Deliberately NOT a FK retrofit onto the six ProvenanceMixin tables —
+    source_name stays free-text; data_source_service resolves a source's
+    record_count by matching on name at read time (same reconciliation
+    idiom as case_service._resolve_zone_id's spatial match), so this can
+    ship without a broader migration touching six existing tables' data."""
+
+    __tablename__ = "data_sources"
+
+    SOURCE_TYPES = frozenset(
+        {"case_management", "sensor_feed", "partner_agency", "manual_entry", "other"}
+    )
+    CADENCES = frozenset({"real_time", "hourly", "daily", "weekly", "manual"})
+
+    id = uuid_pk_column()
+    name = Column(String, nullable=False, unique=True)  # matches ProvenanceMixin.source_name
+    source_type = Column(String, nullable=False)
+    owner = Column(String, nullable=False)  # team/unit responsible
+    cadence = Column(String, nullable=False)
+    description = Column(Text, nullable=True)
+    active = Column(Boolean, nullable=False, default=True)
+    created_by_id = Column(UUID(as_uuid=True), ForeignKey("officers.id"), nullable=False)
+
+
 class ConfidenceReviewEvent(Base, TimestampMixin):
     """Audit trail for confidence disputes/confirmations (brief section 6 +
     7.9; docs/decisions/010). Reshaped from the Phase 6 kickoff stub:

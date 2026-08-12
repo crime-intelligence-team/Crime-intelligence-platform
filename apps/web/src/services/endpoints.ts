@@ -21,6 +21,8 @@ import type {
   ConfidenceReviewSubmit,
   CurrentUserResponse,
   DashboardResponse,
+  DataSourceCreate,
+  DataSourceResponse,
   DistrictDetail,
   DistrictQuickSummary,
   DistrictSummary,
@@ -191,6 +193,14 @@ export const adminApi = {
   sensitiveTags: () => get<SensitiveSubjectOut[]>('/admin/sensitive-tags'),
   setSensitiveTag: (personId: string, payload: SensitiveTagUpdate) =>
     patch<SensitiveSubjectOut>(`/admin/sensitive-tags/${personId}`, payload),
+}
+
+// ─── Data Source Registry ─────────────────────────────────────────────────────
+export const dataSourcesApi = {
+  list: (active?: boolean) =>
+    get<PaginatedResponse<DataSourceResponse>>('/data-sources', { active }),
+  create: (payload: DataSourceCreate) => post<DataSourceResponse>('/data-sources', payload),
+  deactivate: (id: string) => post<DataSourceResponse>(`/data-sources/${id}/deactivate`),
 }
 
 // ─── Officers ─────────────────────────────────────────────────────────────────

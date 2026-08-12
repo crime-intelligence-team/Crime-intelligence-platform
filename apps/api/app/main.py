@@ -11,6 +11,7 @@ from app.routers import (
     auth,
     cases,
     dashboard,
+    data_sources,
     entity_resolution,
     map as map_router,
     network,
@@ -60,6 +61,7 @@ app.include_router(entity_resolution.router)
 app.include_router(admin.router)
 app.include_router(search.router)
 app.include_router(officers.router)
+app.include_router(data_sources.router)
 
 
 @app.get("/health")

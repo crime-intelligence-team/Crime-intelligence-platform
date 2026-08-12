@@ -8,6 +8,7 @@ const TABS = [
   { label: 'Access',     to: '/governance/access'      },
   { label: 'Resolution', to: '/governance/resolution'  },
   { label: 'Sensitive Tags', to: '/governance/sensitive-tags' },
+  { label: 'Data Sources', to: '/governance/data-sources' },
 ]
 
 export function GovernanceSubNav() {
