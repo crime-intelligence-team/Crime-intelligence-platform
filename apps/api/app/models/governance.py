@@ -107,6 +107,44 @@ class DataSource(Base, TimestampMixin):
     created_by_id = Column(UUID(as_uuid=True), ForeignKey("officers.id"), nullable=False)
 
 
+class RetentionPolicy(Base, TimestampMixin):
+    """Retention-eligibility policy per entity type (governance gap: no
+    purge/archive mechanism existed for case/entity/note data). Defines how
+    long a record may age before it's surfaced as retention-eligible.
+
+    Deliberately FLAG-ONLY: this table never deletes or archives anything.
+    Eligibility is computed INLINE at read time — the same "compare an
+    age/expiry timestamp against now" idiom as
+    AccessExceptionRequest.expires_at (see access_exception_service's
+    module docstring) — so there is no background job and no purged/
+    archived state ever written to a data record. A human reviews the
+    candidate list this policy surfaces and decides what to do with it
+    outside this system.
+
+    entity_type == "case" additionally requires status ==
+    Case.STATUS_CLOSED: an open/under-investigation case is never a
+    candidate regardless of age. Every other entity type has no status
+    concept, so eligibility there is age-only. Age is measured from
+    created_at uniformly — no closed_at column exists to measure "time
+    since closed" more precisely, so a case can become eligible
+    immediately upon closing if it was already old; that's the accepted
+    approximation rather than a new migration column.
+    """
+
+    __tablename__ = "retention_policies"
+
+    RETENTION_ENTITY_TYPES = frozenset(
+        {"case", "note", "person", "organization", "vehicle", "device", "address"}
+    )
+
+    id = uuid_pk_column()
+    entity_type = Column(String, nullable=False)
+    retention_days = Column(Integer, nullable=False)
+    reason = Column(Text, nullable=False)
+    active = Column(Boolean, nullable=False, default=True)
+    created_by_id = Column(UUID(as_uuid=True), ForeignKey("officers.id"), nullable=False)
+
+
 class ConfidenceReviewEvent(Base, TimestampMixin):
     """Audit trail for confidence disputes/confirmations (brief section 6 +
     7.9; docs/decisions/010). Reshaped from the Phase 6 kickoff stub:

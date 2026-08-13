@@ -26,6 +26,7 @@ import GovernanceProtocols  from './pages/GovernanceProtocols'
 import GovernanceAccess     from './pages/GovernanceAccess'
 import GovernanceSensitiveTags from './pages/GovernanceSensitiveTags'
 import GovernanceDataSources from './pages/GovernanceDataSources'
+import GovernanceRetention from './pages/GovernanceRetention'
 import EntityResolution     from './pages/EntityResolution'
 
 export default function App() {
@@ -56,7 +57,7 @@ export default function App() {
           <Route path="/network"          element={<NetworkMap />} />
           <Route path="/network/registry" element={<NodeRegistry />} />
 
-          {/* Governance — all 8 sub-routes */}
+          {/* Governance — all 9 sub-routes */}
           <Route path="/governance"             element={<GovernanceSecurity />} />
           <Route path="/governance/integrity"   element={<GovernanceIntegrity />} />
           <Route path="/governance/audit"       element={<GovernanceAudit />} />
@@ -65,6 +66,7 @@ export default function App() {
           <Route path="/governance/resolution"  element={<EntityResolution />} />
           <Route path="/governance/sensitive-tags" element={<GovernanceSensitiveTags />} />
           <Route path="/governance/data-sources"   element={<GovernanceDataSources />} />
+          <Route path="/governance/retention"      element={<GovernanceRetention />} />
 
           {/* Catch-all */}
           <Route path="*" element={<Navigate to="/cases" replace />} />

@@ -9,6 +9,7 @@ const TABS = [
   { label: 'Resolution', to: '/governance/resolution'  },
   { label: 'Sensitive Tags', to: '/governance/sensitive-tags' },
   { label: 'Data Sources', to: '/governance/data-sources' },
+  { label: 'Retention', to: '/governance/retention' },
 ]
 
 export function GovernanceSubNav() {

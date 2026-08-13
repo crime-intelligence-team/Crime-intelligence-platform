@@ -52,6 +52,9 @@ import type {
   RedactionPolicyCreate,
   RedactionPolicyResponse,
   RelationshipOut,
+  RetentionCandidate,
+  RetentionPolicyCreate,
+  RetentionPolicyResponse,
   SearchResponse,
   SensitiveSubjectOut,
   SensitiveTagUpdate,
@@ -201,6 +204,17 @@ export const dataSourcesApi = {
     get<PaginatedResponse<DataSourceResponse>>('/data-sources', { active }),
   create: (payload: DataSourceCreate) => post<DataSourceResponse>('/data-sources', payload),
   deactivate: (id: string) => post<DataSourceResponse>(`/data-sources/${id}/deactivate`),
+}
+
+// ─── Retention Policies ───────────────────────────────────────────────────────
+export const retentionApi = {
+  list: (active?: boolean) =>
+    get<PaginatedResponse<RetentionPolicyResponse>>('/retention-policies', { active }),
+  create: (payload: RetentionPolicyCreate) =>
+    post<RetentionPolicyResponse>('/retention-policies', payload),
+  deactivate: (id: string) => post<RetentionPolicyResponse>(`/retention-policies/${id}/deactivate`),
+  candidates: (id: string) =>
+    get<PaginatedResponse<RetentionCandidate>>(`/retention-policies/${id}/candidates`),
 }
 
 // ─── Officers ─────────────────────────────────────────────────────────────────

@@ -17,6 +17,7 @@ from app.routers import (
     network,
     officers,
     redactions,
+    retention,
     search,
 )
 
@@ -62,6 +63,7 @@ app.include_router(admin.router)
 app.include_router(search.router)
 app.include_router(officers.router)
 app.include_router(data_sources.router)
+app.include_router(retention.router)
 
 
 @app.get("/health")
