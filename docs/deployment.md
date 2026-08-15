@@ -5,6 +5,11 @@ review — not hardened for real case data (see "Before this holds real
 data" at the end). Target: one VPS running Docker Compose, `docker-compose.prod.yml`
 at the repo root, fronted by Caddy for automatic HTTPS.
 
+No card/VPS budget available right now? See
+[deployment-free-tier.md](deployment-free-tier.md) for the same app split
+across free managed tiers (Render + Supabase + Neo4j Aura) instead —
+come back to this doc later when a VPS is an option.
+
 ## Prerequisites
 
 - A VPS with Docker + Compose v2 installed, 4GB+ RAM (Postgres + Neo4j +

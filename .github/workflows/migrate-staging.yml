@@ -1,0 +1,67 @@
+name: Migrate staging DB
+
+# One-off, manually-triggered migration/seed runner for the free-tier
+# staging setup (docs/deployment-free-tier.md). Exists because Supabase's
+# Postgres (direct and pooled) is unreachable on port 5432 from some
+# residential networks — GitHub-hosted runners aren't subject to that,
+# so this runs the same commands docs/deployment-free-tier.md describes
+# running locally, just on infrastructure with unrestricted egress.
+#
+# Requires repo secrets (Settings > Secrets and variables > Actions):
+#   STAGING_DATABASE_URL   e.g. postgresql+psycopg2://postgres.<ref>:<pw>@aws-0-<region>.pooler.supabase.com:5432/postgres
+#   STAGING_NEO4J_URI      e.g. neo4j+s://<id>.databases.neo4j.io
+#   STAGING_NEO4J_USER
+#   STAGING_NEO4J_PASSWORD
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_seeds:
+        description: "Also load demo seed data (skip if loading real content instead)"
+        type: boolean
+        default: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    env:
+      DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+      NEO4J_URI: ${{ secrets.STAGING_NEO4J_URI }}
+      NEO4J_USER: ${{ secrets.STAGING_NEO4J_USER }}
+      NEO4J_PASSWORD: ${{ secrets.STAGING_NEO4J_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Enable PostGIS extension
+        run: |
+          python -c "
+          from sqlalchemy import create_engine, text
+          import os
+          engine = create_engine(os.environ['DATABASE_URL'])
+          with engine.connect() as conn:
+              conn.execute(text('CREATE EXTENSION IF NOT EXISTS postgis;'))
+              conn.commit()
+          "
+
+      - name: Run migrations
+        run: alembic upgrade head
+
+      - name: Seed demo data
+        if: ${{ inputs.run_seeds }}
+        run: |
+          python -m scripts.seed_dev_data
+          python -m scripts.seed_phase4_test_data
+          python -m scripts.seed_phase4_relationships
+          python -m scripts.seed_phase6_priority
+          python -m scripts.seed_phase6_merge
