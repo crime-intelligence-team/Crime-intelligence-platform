@@ -23,6 +23,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from geoalchemy2 import functions as geo_func
+from geoalchemy2.shape import to_shape
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session
 
@@ -128,7 +129,24 @@ def _visible_case_stmt(
     return stmt
 
 
-def _to_summary(case: Case, is_pinned: bool = False) -> CaseSummary:
+def _coords(address: Address | None) -> tuple[float | None, float | None]:
+    """(latitude, longitude), or (None, None) when there's no address or it
+    has no geocoded point. Map consumption only — never persisted."""
+    if address is None or address.geocoded_point is None:
+        return None, None
+    point = to_shape(address.geocoded_point)
+    return point.y, point.x
+
+
+def _addresses_by_id(db: Session, address_ids: list[UUID]) -> dict[UUID, Address]:
+    if not address_ids:
+        return {}
+    rows = db.execute(select(Address).where(Address.id.in_(address_ids))).scalars().all()
+    return {a.id: a for a in rows}
+
+
+def _to_summary(case: Case, is_pinned: bool = False, address: Address | None = None) -> CaseSummary:
+    latitude, longitude = _coords(address)
     return CaseSummary(
         id=str(case.id),
         case_number=case.case_number,
@@ -138,6 +156,8 @@ def _to_summary(case: Case, is_pinned: bool = False) -> CaseSummary:
         district_id=str(case.district_id) if case.district_id else None,
         created_at=str(case.created_at) if case.created_at else None,
         is_pinned=is_pinned,
+        latitude=latitude,
+        longitude=longitude,
     )
 
 
@@ -178,8 +198,9 @@ def _resolve_zone_id(db: Session, address_id: UUID | None) -> UUID | None:
 def _to_detail(db: Session, case: Case, officer: Officer) -> CaseDetail:
     zone_id = _resolve_zone_id(db, case.address_id)
     is_pinned = _is_pinned(db, case.id, officer.id)
+    address = db.get(Address, case.address_id) if case.address_id else None
     return CaseDetail(
-        **_to_summary(case, is_pinned=is_pinned).model_dump(),
+        **_to_summary(case, is_pinned=is_pinned, address=address).model_dump(),
         summary=case.summary,
         lead_officer_id=str(case.lead_officer_id) if case.lead_officer_id else None,
         address_id=str(case.address_id) if case.address_id else None,
@@ -214,7 +235,11 @@ def list_cases(
         .limit(page_size)
     ).scalars().all()
     pinned_ids = _pinned_case_ids(db, officer.id, [c.id for c in rows])
-    return [_to_summary(c, is_pinned=c.id in pinned_ids) for c in rows], total
+    addresses = _addresses_by_id(db, [c.address_id for c in rows if c.address_id is not None])
+    return [
+        _to_summary(c, is_pinned=c.id in pinned_ids, address=addresses.get(c.address_id))
+        for c in rows
+    ], total
 
 
 def get_case(

@@ -7,8 +7,8 @@ import { Button } from '../components/ui/Button'
 import { ErrorBoundary } from '../components/ui/ErrorBoundary'
 import { SkeletonMap } from '../components/ui/Skeletons'
 import { useApi } from '../hooks/useApi'
-import { mapApi } from '../services/endpoints'
-import type { DistrictQuickSummary, DistrictSummary, ZoneRiskOut } from '@cip/shared-types'
+import { casesApi, mapApi } from '../services/endpoints'
+import type { CaseSummary, DistrictQuickSummary, DistrictSummary, ZoneRiskOut } from '@cip/shared-types'
 
 type MapMode = 'default' | 'zone'
 
@@ -63,6 +63,12 @@ const classificationLabel: Record<string, string> = {
   sealed: 'Sealed',
 }
 const scoreColor = (score: number) => (score >= 75 ? '#ef4444' : score >= 50 ? '#f59e0b' : '#22c55e')
+const caseStatusColor: Record<string, string> = {
+  open: '#3b82f6',
+  under_investigation: '#f59e0b',
+  pending_review: '#f97316',
+  closed: '#22c55e',
+}
 const confidenceColor: Record<string, string> = {
   unconfirmed: '#64748b',
   probable: '#3b82f6',
@@ -342,6 +348,7 @@ function useAllZones(districts: DistrictSummary[]) {
 
 // ── Main GeoIntelligence page ─────────────────────────────────────────────────
 export default function GeoIntelligence() {
+  const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const mode = (searchParams.get('mode') ?? 'default') as MapMode
   const setMode = (m: string) => setSearchParams(m === 'default' ? {} : { mode: m })
@@ -354,6 +361,14 @@ export default function GeoIntelligence() {
   const districts = districtPage?.items ?? []
 
   const { zones, refetch: refetchZones } = useAllZones(districts)
+
+  // Individual case markers (default mode only) — a large page covers the
+  // realistic case volume for a single map view without adding clustering.
+  const { data: casePage } = useApi(() => casesApi.list(1, 100))
+  const casesWithCoords = (casePage?.items ?? []).filter(
+    (c): c is CaseSummary & { latitude: number; longitude: number } =>
+      c.latitude != null && c.longitude != null,
+  )
 
   const { data: summary, loading: summaryLoading } = useApi(
     () => (selectedDistrict ? mapApi.districtSummary(selectedDistrict.id) : Promise.resolve(null)),
@@ -510,6 +525,30 @@ export default function GeoIntelligence() {
                   >
                     <Tooltip direction="top" offset={[0, -8]} permanent={false} className="sentinel-tooltip" opacity={1}>
                       <span className="whitespace-pre-line">{tooltipLabel}</span>
+                    </Tooltip>
+                  </CircleMarker>
+                )
+              })}
+
+              {/* Individual case markers: one point per case with a
+                  resolved address location. District/zone dots above are
+                  aggregate views; these are the actual incident locations. */}
+              {mode === 'default' && casesWithCoords.map(c => {
+                const color = caseStatusColor[c.status] ?? '#94a3b8'
+                return (
+                  <CircleMarker
+                    key={c.id}
+                    center={[c.latitude, c.longitude]}
+                    radius={5}
+                    fillColor={color}
+                    color="#ffffff"
+                    weight={1}
+                    fillOpacity={0.95}
+                    opacity={0.9}
+                    eventHandlers={{ click: () => navigate(`/cases/${c.id}`) }}
+                  >
+                    <Tooltip direction="top" offset={[0, -6]} opacity={1}>
+                      <span>{c.case_number} — {c.title}</span>
                     </Tooltip>
                   </CircleMarker>
                 )

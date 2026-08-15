@@ -36,6 +36,11 @@ class CaseSummary(BaseModel):
     district_id: str | None
     created_at: str | None
     is_pinned: bool
+    # Derived from the linked address's geocoded_point (None whenever
+    # there's no address_id or the address has no geocoded point) — same
+    # "derived, not stored" idiom as CaseDetail.zone_id.
+    latitude: float | None = None
+    longitude: float | None = None
 
 
 class CaseDetail(CaseSummary):

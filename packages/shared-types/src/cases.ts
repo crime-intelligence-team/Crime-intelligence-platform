@@ -22,6 +22,8 @@ export interface CaseSummary {
   district_id: string | null
   created_at: string | null
   is_pinned: boolean
+  latitude: number | null
+  longitude: number | null
 }
 
 export interface CaseDetail extends CaseSummary {

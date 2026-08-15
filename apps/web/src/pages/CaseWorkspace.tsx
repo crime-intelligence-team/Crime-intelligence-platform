@@ -1,14 +1,14 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Filter, ArrowUpDown, Pin, CheckCircle, AlertCircle, Clock, BarChart3, MapPin, Plus, X } from 'lucide-react'
+import { Filter, ArrowUpDown, Pin, CheckCircle, AlertCircle, Clock, BarChart3, MapPin, Plus, X, Search } from 'lucide-react'
 import { StatusDot } from '../components/ui/Badge'
 import { Button } from '../components/ui/Button'
 import { SkeletonRow, SkeletonCard } from '../components/ui/Skeletons'
 import { useApi } from '../hooks/useApi'
 import { useActiveCase } from '../context/AppContext'
-import { casesApi, mapApi } from '../services/endpoints'
+import { casesApi, mapApi, networkApi } from '../services/endpoints'
 import { ApiError } from '../services/client'
-import type { CaseSummary, ClassificationLevel } from '@cip/shared-types'
+import type { CaseSummary, ClassificationLevel, EntitySummary } from '@cip/shared-types'
 
 const statusConfig: Record<string, { label: string; icon: any; color: string }> = {
   open:                 { label: 'Open',                icon: AlertCircle, color: 'text-accent-blue' },
@@ -93,12 +93,28 @@ function CreateCaseModal({ onClose, onCreated }: { onClose: () => void; onCreate
   const [summary, setSummary] = useState('')
   const [classification, setClassification] = useState<ClassificationLevel>('restricted_operational')
   const [districtId, setDistrictId] = useState('')
-  const [addressId, setAddressId] = useState('')
+  const [addressQuery, setAddressQuery] = useState('')
+  const [addressDebounced, setAddressDebounced] = useState('')
+  const [selectedAddress, setSelectedAddress] = useState<EntitySummary | null>(null)
+  const [addressFocused, setAddressFocused] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const { data: districtPage } = useApi(() => mapApi.districts())
   const districts = districtPage?.items ?? []
+
+  useEffect(() => {
+    const t = setTimeout(() => setAddressDebounced(addressQuery), 300)
+    return () => clearTimeout(t)
+  }, [addressQuery])
+
+  const { data: addressResults } = useApi(
+    () => (!selectedAddress && addressDebounced.trim().length >= 2
+      ? networkApi.search(addressDebounced.trim(), 'address')
+      : Promise.resolve(null)),
+    [addressDebounced, selectedAddress],
+  )
+  const addressCandidates = addressResults?.items ?? []
 
   async function handleSubmit() {
     setSubmitting(true)
@@ -110,7 +126,7 @@ function CreateCaseModal({ onClose, onCreated }: { onClose: () => void; onCreate
         summary: summary || null,
         classification,
         district_id: districtId,
-        address_id: addressId.trim() || null,
+        address_id: selectedAddress?.id ?? null,
       })
       onCreated(created.id)
     } catch (e) {
@@ -170,10 +186,42 @@ function CreateCaseModal({ onClose, onCreated }: { onClose: () => void; onCreate
           </div>
 
           <div>
-            <label className={labelCls}>Address ID (optional)</label>
-            <input value={addressId} onChange={e => setAddressId(e.target.value)} placeholder="Linked incident address UUID"
-              className={inputCls} />
-            <p className="text-[10px] text-text-tertiary mt-1">Zone is resolved automatically from the address's location</p>
+            <label className={labelCls}>Incident Address (optional)</label>
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-tertiary pointer-events-none" />
+              <input
+                value={addressQuery}
+                onChange={e => { setAddressQuery(e.target.value); setSelectedAddress(null) }}
+                onFocus={() => setAddressFocused(true)}
+                onBlur={() => setTimeout(() => setAddressFocused(false), 150)}
+                placeholder="Search known addresses…"
+                className={`${inputCls} pl-8`}
+              />
+              {selectedAddress && (
+                <button
+                  onClick={() => { setSelectedAddress(null); setAddressQuery('') }}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded text-text-tertiary hover:text-text-primary"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+              {addressFocused && !selectedAddress && addressCandidates.length > 0 && (
+                <div className="absolute z-20 mt-1 w-full max-h-40 overflow-y-auto bg-bg-elevated border border-border-default rounded-lg shadow-lg">
+                  {addressCandidates.map(a => (
+                    <button key={a.id} onMouseDown={() => { setSelectedAddress(a); setAddressQuery(a.label); setAddressFocused(false) }}
+                      className="w-full text-left px-3 py-2 text-xs text-text-primary hover:bg-bg-surface-2 transition-colors truncate">
+                      {a.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {addressFocused && !selectedAddress && addressDebounced.trim().length >= 2 && addressCandidates.length === 0 && (
+                <div className="absolute z-20 mt-1 w-full bg-bg-elevated border border-border-default rounded-lg shadow-lg px-3 py-2 text-xs text-text-tertiary">
+                  No matching addresses
+                </div>
+              )}
+            </div>
+            <p className="text-[10px] text-text-tertiary mt-1">Zone and map location are resolved automatically from the address</p>
           </div>
 
           {error && <p className="text-xs text-severity-critical bg-severity-tint-critical/30 border border-severity-critical/30 rounded-md px-3 py-2">{error}</p>}
