@@ -1,246 +1,120 @@
-# State Crime Intelligence Platform
+# Crime Intelligence Platform — Backend
 
-A secure, role-based intelligence platform for authorized law-enforcement users to monitor criminal activity, analyze regional trends, explore criminal networks, and support investigation workflows through maps, dashboards, and connected-entity analysis.
+FastAPI + PostGIS + Neo4j crime-intelligence platform (Sprint 1, Phases 2–6:
+districts/zones, dashboard, entities/relationships, cases/notes/export,
+governance: step-up re-auth, alerts, redaction engine, access exceptions,
+entity resolution, confidence review).
 
-## Overview
+The full setup below is **verified on a clean checkout** (Phase 7,
+component 1): fresh clone → empty volumes → build → migrations from empty
+DB → seeds → one end-to-end request per phase.
 
-The State Crime Intelligence Platform is being built as a full-stack web application for authorized users such as police officers, detectives, intelligence analysts, supervisors, and administrators. The platform combines geospatial intelligence, district-level dashboards, criminal network analysis, and explainable risk-zone visualization into one operational system.
+## Prerequisites
 
-The first version is scoped to a single state with district-level drill-down. The architecture is being designed so the system can later scale to broader geography and more advanced analytics without requiring a full rewrite.
+- Docker with Compose v2 (`docker compose version`)
+- A local `psql` client is optional (only needed for ad-hoc DB queries);
+  `docker exec cip-postgres psql -U cip -d cip` works for that.
 
-## Core Modules
-
-- Secure login and role-based access control
-- State and district map with multiple visualization modes
-- Regional dashboard for selected districts or state-level summaries
-- Network intelligence page for criminal and gang relationship analysis
-- Explainable zone/risk analysis
-- Audit logging and governance controls
-- Case workspace for saving investigation context
-
-## Goals
-
-- Provide a centralized intelligence workspace for authorized law-enforcement use
-- Improve situational awareness through maps and dashboards
-- Help investigators identify criminal, gang, and incident connections
-- Support explainable risk-based regional monitoring
-- Maintain secure access, auditability, and role-based data visibility
-
-## Tech Stack
-
-### Frontend
-- React
-- Vite
-- TypeScript
-- React Router
-- Axios
-- Leaflet
-
-### Backend
-- NestJS
-- TypeScript
-- JWT Authentication
-- Role-Based Access Control (RBAC)
-
-### Database
-- PostgreSQL
-- PostGIS
-
-### Analytics
-- Python service / scheduled jobs for risk scoring and intelligence analytics
-
-### Repository Structure
-- Monorepo with shared packages and app separation
-- pnpm workspaces
-
-## Repository Structure
-
-```text
-.
-├── apps/
-│   ├── web/                # React + Vite frontend
-│   ├── api/                # NestJS backend
-│   └── analytics/          # Python analytics / scoring jobs
-├── packages/
-│   ├── shared-types/       # Shared DTOs, enums, contracts
-│   └── config/             # Shared config, linting, TS settings
-├── docs/
-│   ├── prd/                # Product requirement documents
-│   ├── architecture/       # Architecture notes and diagrams
-│   ├── api/                # API contracts and endpoint docs
-│   ├── database/           # Schema and data model docs
-│   ├── roles/              # Permission matrix and access rules
-│   └── decisions/          # Architecture decision records
-├── infra/
-│   ├── db/                 # Database scripts and setup
-│   └── docker/             # Container and local infra config
-├── .github/
-│   ├── workflows/          # CI/CD workflows
-│   ├── CODEOWNERS          # Review ownership rules
-│   └── pull_request_template.md
-├── .env.example
-├── CONTRIBUTING.md
-├── SECURITY.md
-├── package.json
-├── pnpm-workspace.yaml
-└── README.md
-```
-
-## User Roles
-
-The platform is intended only for authorized users. Current planned roles include:
-
-- Admin
-- Supervisor
-- Intelligence Analyst
-- Detective
-- District Officer
-
-Each role will have controlled access to modules, records, and actions based on permissions and jurisdiction.
-
-## Planned Map Modes
-
-### Default Mode
-A clean district/state map view with minimal clutter, focused on geography and core intelligence indicators.
-
-### Network Mode
-A relationship-focused map overlay showing criminal and gang connections across regions, with filters for specific individuals, gangs, cases, and time ranges.
-
-### Zone Mode
-A visual risk layer that highlights more crime-prone or intelligence-sensitive areas using explainable scoring and color-based intensity.
-
-## Development Workflow
-
-### Branching Strategy
-
-- `main` → stable branch
-- `develop` → integration branch
-- `feature/<feature-name>` → feature branches
-- `bugfix/<bug-name>` → bug fix branches
-- `hotfix/<hotfix-name>` → urgent fixes
-
-### Rules
-
-- Do not push directly to `main`
-- Create all feature work from `develop`
-- Open a pull request to merge into `develop`
-- Require at least one review before merge
-- Keep commits focused and descriptive
-- Update documentation when architecture or contracts change
-
-## Getting Started
-
-### Prerequisites
-
-Make sure the following are installed:
-
-- Node.js (LTS)
-- pnpm
-- PostgreSQL
-- Git
-- Python 3.x
-
-### Clone the Repository
+## Verified setup (from a clean checkout)
 
 ```bash
-git clone https://github.com/<owner>/state-crime-intelligence-platform.git
-cd state-crime-intelligence-platform
+git clone <repo> Crime-intelligence-platform
+cd Crime-intelligence-platform
+cp apps/api/.env.example apps/api/.env        # REQUIRED — compose fails without it
+docker compose up --build                     # postgres (healthy) + neo4j (healthy) + api
 ```
 
-### Install Workspace Dependencies
+Wait until both DBs report healthy and `cip-api` is up, then:
 
 ```bash
-pnpm install
+curl http://localhost:8000/health
+# expect: {"status":"ok", ...}
 ```
 
-### Environment Variables
+## Migrations
 
-Create local environment files based on `.env.example`.
-
-Example root variables may include:
-
-```env
-DATABASE_URL=
-JWT_SECRET=
-PORT=
-VITE_API_URL=
-MAP_TILE_URL=
-```
-
-Do not commit real secrets or private credentials.
-
-## Running the Project
-
-The exact run steps will be added as the apps are initialized.
-
-Planned commands:
+Run from the host against the empty Postgres (the compose `api` service
+mounts the code, but alembic is invoked here for a clean log):
 
 ```bash
-pnpm dev:web
-pnpm dev:api
+cd apps/api
+DATABASE_URL=postgresql+psycopg2://cip:cip_dev_password@localhost:5432/cip \
+  alembic upgrade head
 ```
 
-Additional setup instructions for database migration, seeding, and analytics jobs will be documented inside `/docs` and each app folder as development progresses.
+Expected (empty DB, in order):
 
-## Documentation
+```
+Running upgrade  -> d8b860383935, initial_models
+Running upgrade d8b860383935 -> b3a7c11e4d92, add_alerts
+Running upgrade b3a7c11e4d92 -> eb9e4c3f18a2, redaction_policy_decisions
+Running upgrade eb9e4c3f18a2 -> f8a2b7d64c03, confidence_review_events
+Running upgrade f8a2b7d64c03 -> a9c4e8d2f1b5, entity_resolution_events
+```
 
-Project documentation will be maintained inside the `/docs` directory.
+## Seed data (in this order — later scripts resolve earlier rows by name)
 
-Important docs include:
-- PRD
-- architecture overview
-- permission matrix
-- API contracts
-- database schema
-- setup guides
-- architecture decisions
+```bash
+docker exec cip-api python -m scripts.seed_dev_data              # districts, zones, 20 addresses, ADM/ANL/DTO officers, CASE-2026-0001
+docker exec cip-api python -m scripts.seed_phase4_test_data      # SUP-0001 supervisor, PROTECTED address, protected person
+docker exec cip-api python -m scripts.seed_phase4_relationships  # Neo4j nodes/edges + Postgres mirror rows (rel-e1..e5)
+docker exec cip-api python -m scripts.seed_phase6_priority       # 2 vehicles + graph edges + mirrors (alert priority demo)
+docker exec cip-api python -m scripts.seed_phase6_merge          # duplicate persons P1/P2 + protected + neutral (merge demo)
+```
 
-## Contributing
+All officer passwords are `Password1!` (admin/ADM-0001, analyst/ANL-0001,
+officer/DTO-0001, supervisor/SUP-0001, detective/DET-0001). Login field is
+`username_or_official_id` (username works).
 
-Before contributing:
-1. Pull the latest `develop`
-2. Create a new feature branch
-3. Commit only related changes
-4. Open a pull request with a clear summary
-5. Request review from the relevant code owner
+## Testing
 
-Please read `CONTRIBUTING.md` for the full workflow.
+The backend test suite has two layers (`apps/api/tests`, see
+`docs/testing.md`):
 
-## Security
+- **Unit tests** (`tests/unit`) — pure domain logic (permission matrix,
+  classification/score bands, redaction vocabulary, risk interpretation,
+  case-number format). No database required:
+  ```bash
+  cd apps/api
+  python -m pytest tests/unit
+  ```
+- **Integration tests** (`tests/integration`) — API-level auth, global
+  search, and audit-log gating against a live Postgres. They self-provision
+  their officers (no seed dependency) and **skip automatically** when the
+  database is unreachable:
+  ```bash
+  cd apps/api && alembic upgrade head   # needs Postgres up first
+  python -m pytest
+  ```
 
-This repository is private and intended for internal team development only.
+CI (`.github/workflows/ci.yml`) runs the full backend suite against
+Postgres + Neo4j services and typechecks/builds the frontend
+(`apps/web`: `npx tsc -b && npm run build`).
 
-Important rules:
-- Never commit secrets, credentials, or production keys
-- Never upload real sensitive datasets
-- Use `.env` files for local configuration
-- Follow role-based access design carefully
-- Report security concerns privately to the repo admins
+## Smoke test (one request per phase)
 
-Please read `SECURITY.md` for more details.
+```bash
+curl -X POST http://localhost:8000/api/v1/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"username_or_official_id":"admin","password":"Password1!"}'   # Sprint 1
+curl http://localhost:8000/api/v1/districts -H "Authorization: Bearer $TOKEN"                          # Phase 2
+curl http://localhost:8000/api/v1/dashboard/<CENTRAL_DISTRICT_ID> -H "Authorization: Bearer $TOKEN"    # Phase 3
+curl 'http://localhost:8000/api/v1/entities/search?q=Phase4' -H "Authorization: Bearer $TOKEN"         # Phase 4
+curl -X POST http://localhost:8000/api/v1/cases -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"case_number":"CASE-2026-9001","title":"smoke","district_id":"<EAST_DISTRICT_ID>"}'            # Phase 5
+curl 'http://localhost:8000/api/v1/search?q=Smuggling' -H "Authorization: Bearer $TOKEN"                # Phase 5 (global search)
+curl http://localhost:8000/api/v1/admin/audit -H "Authorization: Bearer $TOKEN"                         # Phase 5 (audit log, supervisor+)
+# Phase 6: access exceptions (request + step-up approve), entity merge, confidence review
+```
 
-## Current Status
+## API conventions
 
-This project is currently in the planning and repository setup phase.
-
-Completed:
-- Product outline
-- PRD draft
-- Initial stack selection
-- Repository planning
-
-Next:
-- Monorepo initialization
-- Backend and frontend app setup
-- Database schema design
-- API contract definition
-- Sprint 0 execution
-
-## Team
-
-- Team Lead: Ravi Shankar
-- Team Members: To be updated
-
-## License
-
-This project is currently for academic/internal team use unless otherwise specified by the team.
+- Base path: `/api/v1` (map and network routers mount directly under it:
+  `/districts`, `/entities/search`, … — not `/map/...`, `/network/...`).
+- Error envelope: `{"error": {"code", "message", "details"}}`.
+- Sensitive operations (case export, exception approval) require a fresh
+  step-up assertion: `POST /auth/step-up` then send it as
+  `X-Step-Up-Token` (see `docs/decisions/006`).
+- All product decisions and deferred items live in `docs/decisions/`
+  (001–012).

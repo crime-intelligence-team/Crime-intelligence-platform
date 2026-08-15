@@ -1,0 +1,248 @@
+from datetime import datetime
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy.orm import Session
+
+from app.core.database import get_db
+from app.core.dependencies import get_current_officer, require_permissions
+from app.models.entities import Officer
+from app.models.governance import ConfidenceReviewEvent
+from app.schemas.audit import AuditLogEntryOut
+from app.schemas.common import PaginatedResponse
+from app.schemas.confidence import (
+    ConfidenceReviewDecision,
+    ConfidenceReviewResponse,
+    ConfidenceReviewSubmit,
+)
+from app.schemas.sensitive_tags import SensitiveSubjectOut, SensitiveTagUpdate
+from app.services import audit_service, confidence_review_service, sensitive_tag_service
+
+router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
+
+
+def _to_response(event: ConfidenceReviewEvent) -> ConfidenceReviewResponse:
+    return ConfidenceReviewResponse(
+        id=str(event.id),
+        target_type=event.target_type,
+        target_id=event.target_id,
+        action=event.action,
+        original_score=event.original_score,
+        proposed_score=event.proposed_score,
+        review_status=event.review_status,
+        submitted_by_id=str(event.submitted_by_id),
+        reviewed_by_id=str(event.reviewed_by_id) if event.reviewed_by_id else None,
+        reviewed_at=event.reviewed_at.isoformat() if event.reviewed_at else None,
+        created_at=event.created_at.isoformat() if event.created_at else None,
+    )
+
+
+@router.get("/audit", response_model=PaginatedResponse[AuditLogEntryOut])
+def list_audit_log(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=100),
+    action: str | None = Query(None),
+    actor_id: str | None = Query(None),
+    module: str | None = Query(None),
+    success: bool | None = Query(None),
+    date_from: datetime | None = Query(None),
+    date_to: datetime | None = Query(None),
+    q: str | None = Query(None, description="Free-text filter over action/resource/detail"),
+    _officer: Officer = Depends(require_permissions("audit:view")),
+    db: Session = Depends(get_db),
+):
+    """Append-only audit trail (brief section 9), newest first. Gated
+    audit:view (supervisor/administrator). No write paths exist — every
+    write goes through audit_service.write_audit_log from within the
+    module whose action is being recorded."""
+    items, total = audit_service.list_audit_entries(
+        db=db,
+        officer=_officer,
+        page=page,
+        page_size=page_size,
+        action=action,
+        actor_id=actor_id,
+        module=module,
+        success=success,
+        date_from=date_from,
+        date_to=date_to,
+        query=q,
+    )
+    return PaginatedResponse(items=items, total=total, page=page, page_size=page_size)
+
+
+@router.post(
+    "/confidence-review",
+    response_model=ConfidenceReviewResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def submit_confidence_review(
+    payload: ConfidenceReviewSubmit,
+    officer: Officer = Depends(require_permissions("confidence:review")),
+    db: Session = Depends(get_db),
+):
+    """Submit a dispute/confirm on an edge or zone score (brief 7.9).
+    Gated confidence:review — closes the Sprint-1 gap where submit had
+    no permission gate at all (decision 010)."""
+    try:
+        return _to_response(
+            confidence_review_service.submit_review(
+                db=db, officer=officer, payload=payload
+            )
+        )
+    except confidence_review_service.InvalidTargetTypeError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": {
+                    "code": "invalid_target_type",
+                    "message": "Confidence review target type is not valid",
+                    "details": {"valid_target_types": ("edge", "zone_score")},
+                }
+            },
+        )
+    except confidence_review_service.InvalidActionError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": {
+                    "code": "invalid_action",
+                    "message": "Confidence review action is not valid",
+                    "details": {"valid_actions": ("dispute", "confirm")},
+                }
+            },
+        )
+    except confidence_review_service.InvalidScoreError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": {
+                    "code": "invalid_score",
+                    "message": "proposed_score must be an integer between 0 and 100",
+                }
+            },
+        )
+    except confidence_review_service.TargetNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "error": {
+                    "code": "confidence_target_not_found",
+                    "message": "Confidence review target does not exist",
+                }
+            },
+        )
+
+
+@router.post(
+    "/confidence-review/{review_id}/decision",
+    response_model=ConfidenceReviewResponse,
+)
+def decide_confidence_review(
+    review_id: str,
+    payload: ConfidenceReviewDecision,
+    officer: Officer = Depends(require_permissions("confidence:review")),
+    db: Session = Depends(get_db),
+):
+    """Accept/reject a pending review. An accepted dispute writes the
+    proposed score to the relational mirror (Neo4j sync deferred — 010)
+    and fires exactly one confidence_change Alert."""
+    try:
+        review_uuid = UUID(review_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": {
+                    "code": "invalid_uuid",
+                    "message": "Review ID is not a valid UUID",
+                }
+            },
+        )
+    try:
+        return _to_response(
+            confidence_review_service.decide_review(
+                db=db, officer=officer, review_id=review_uuid, decision=payload.decision
+            )
+        )
+    except confidence_review_service.InvalidTransitionError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": {
+                    "code": "invalid_transition",
+                    "message": "Review is not pending or decision is not valid",
+                }
+            },
+        )
+    except confidence_review_service.ConfidenceReviewNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "error": {
+                    "code": "confidence_review_not_found",
+                    "message": "Confidence review not found",
+                }
+            },
+        )
+    except confidence_review_service.CannotReviewOwnSubmissionError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": {
+                    "code": "cannot_review_own_submission",
+                    "message": "A reviewer cannot decide on their own confidence review submission",
+                }
+            },
+        )
+
+
+@router.get("/sensitive-tags", response_model=list[SensitiveSubjectOut])
+def list_sensitive_tags(
+    _officer: Officer = Depends(require_permissions("system:configure")),
+    db: Session = Depends(get_db),
+):
+    """Every person currently tagged is_protected_subject. Admin-only
+    listing (system:configure) — the flag's enforcement elsewhere
+    (merge guard, PROTECTED-tier graph gating, alerting) is unrelated
+    and untouched by this endpoint."""
+    return sensitive_tag_service.list_protected_subjects(db=db)
+
+
+@router.patch("/sensitive-tags/{person_id}", response_model=SensitiveSubjectOut)
+def set_sensitive_tag(
+    person_id: str,
+    payload: SensitiveTagUpdate,
+    officer: Officer = Depends(require_permissions("system:configure")),
+    db: Session = Depends(get_db),
+):
+    try:
+        person_uuid = UUID(person_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": {
+                    "code": "invalid_uuid",
+                    "message": "Person ID is not a valid UUID",
+                }
+            },
+        )
+    result = sensitive_tag_service.set_protected_subject(
+        db=db,
+        officer=officer,
+        person_id=person_uuid,
+        is_protected=payload.is_protected_subject,
+        reason=payload.reason,
+    )
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "error": {
+                    "code": "person_not_found",
+                    "message": "Person not found",
+                }
+            },
+        )
+    return result

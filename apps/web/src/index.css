@@ -1,0 +1,270 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-border-default;
+  }
+
+  body {
+    @apply bg-bg-canvas text-text-primary font-sans antialiased;
+    min-height: 100vh;
+  }
+
+  /* 
+   * Unified Input Contrast Rules 
+   * Ensures high-contrast typed text across all inputs automatically.
+   */
+  input[type="text"],
+  input[type="search"],
+  input[type="email"],
+  input[type="password"],
+  textarea {
+    color: theme('colors.text.primary') !important;
+  }
+  input[type="text"]::placeholder,
+  input[type="search"]::placeholder,
+  input[type="email"]::placeholder,
+  input[type="password"]::placeholder,
+  textarea::placeholder {
+    color: theme('colors.text.tertiary') !important;
+  }
+
+  /* Override for any light-background inputs to use dark text */
+  input.bg-white, input.bg-gray-50, input.bg-slate-50,
+  textarea.bg-white, textarea.bg-gray-50, textarea.bg-slate-50 {
+    color: theme('colors.bg.canvas') !important;
+  }
+  input.bg-white::placeholder, input.bg-gray-50::placeholder, input.bg-slate-50::placeholder,
+  textarea.bg-white::placeholder, textarea.bg-gray-50::placeholder, textarea.bg-slate-50::placeholder {
+    color: theme('colors.text.secondary') !important;
+  }
+
+  ::selection {
+    @apply bg-brand-500/20 text-text-primary;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { @apply bg-transparent; }
+  ::-webkit-scrollbar-thumb { @apply bg-brand-500/50 rounded-full; }
+  ::-webkit-scrollbar-thumb:hover { @apply bg-brand-400/60; }
+  * { scrollbar-width: thin; scrollbar-color: theme('colors.border.strong') transparent; }
+
+  /* Leaflet dark override */
+  .leaflet-container { background: theme('colors.bg.canvas') !important; }
+  .leaflet-tile-pane { filter: brightness(0.85) saturate(0.9); }
+  .leaflet-control-attribution { display: none !important; }
+  .leaflet-control-zoom a {
+    background: theme('colors.bg.surface') !important;
+    color: theme('colors.text.secondary') !important;
+    border-color: theme('colors.border.default') !important;
+  }
+}
+
+/* ── Keyframe Animations ──────────────────────────────────────────────────── */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes slide-in-right {
+  from { transform: translateX(16px); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+
+@keyframes slide-up {
+  from { transform: translateY(12px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 0.4; }
+  50%       { opacity: 0.7; }
+}
+
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(59,130,246,0); }
+  50%       { box-shadow: 0 0 16px 2px rgba(59,130,246,0.22); }
+}
+
+@keyframes glow-pulse-red {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0); }
+  50%       { box-shadow: 0 0 16px 3px rgba(239,68,68,0.22); }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-4px); }
+}
+
+@keyframes scan-line {
+  0%   { top: 0%; }
+  100% { top: 100%; }
+}
+
+@keyframes drift {
+  0%   { transform: translate(0, 0); }
+  33%  { transform: translate(12px, -8px); }
+  66%  { transform: translate(-8px, 6px); }
+  100% { transform: translate(0, 0); }
+}
+
+@keyframes count-up {
+  from { opacity: 0; transform: scale(0.8); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes border-glow {
+  0%, 100% { border-color: rgba(59,130,246,0.2); }
+  50%       { border-color: rgba(59,130,246,0.6); }
+}
+
+/* ── Component Layer ──────────────────────────────────────────────────────── */
+@layer components {
+
+  /* ── Animation utilities ── */
+  .animate-fade-in    { animation: fade-in 0.2s ease-out; }
+  .animate-slide-up   { animation: slide-up 0.25s ease-out; }
+  .animate-slide-in-right { animation: slide-in-right 0.25s ease-out; }
+  .animate-float      { animation: float 3s ease-in-out infinite; }
+  .animate-shimmer    { animation: shimmer 2s linear infinite; }
+  .animate-pulse-glow { animation: glow-pulse 2.5s ease-in-out infinite; }
+  .animate-pulse-glow-red { animation: glow-pulse-red 2s ease-in-out infinite; }
+  .animate-drift      { animation: drift 8s ease-in-out infinite; }
+  .animate-count-up   { animation: count-up 0.4s cubic-bezier(0.34, 1.56, 0.64, 1); }
+
+  /* Page enter — applied to <main> for every route transition */
+  .page-enter {
+    animation: slide-up 0.22s ease-out;
+  }
+
+  /* Stagger children for list animations */
+  .stagger-children > * {
+    animation: slide-up 0.22s ease-out both;
+  }
+  .stagger-children > *:nth-child(1)  { animation-delay: 0ms; }
+  .stagger-children > *:nth-child(2)  { animation-delay: 30ms; }
+  .stagger-children > *:nth-child(3)  { animation-delay: 60ms; }
+  .stagger-children > *:nth-child(4)  { animation-delay: 90ms; }
+  .stagger-children > *:nth-child(5)  { animation-delay: 120ms; }
+  .stagger-children > *:nth-child(6)  { animation-delay: 150ms; }
+  .stagger-children > *:nth-child(7)  { animation-delay: 180ms; }
+  .stagger-children > *:nth-child(8)  { animation-delay: 210ms; }
+
+  /* Glass card */
+  .glass {
+    @apply bg-bg-surface-2/80 backdrop-blur-sm border border-border-default;
+  }
+
+  /* Elevated card with subtle glow on hover */
+  .card {
+    @apply bg-bg-surface border border-border-default rounded-lg transition-all duration-200;
+  }
+  .card:hover {
+    @apply border-border-strong shadow-lg;
+  }
+
+  /* Glow accent borders */
+  .glow-blue  { box-shadow: 0 0 0 1px rgba(59,130,246,0.25), 0 0 20px rgba(59,130,246,0.1); }
+  .glow-red   { box-shadow: 0 0 0 1px rgba(239,68,68,0.30),  0 0 20px rgba(239,68,68,0.12); }
+  .glow-amber { box-shadow: 0 0 0 1px rgba(245,158,11,0.25), 0 0 20px rgba(245,158,11,0.10); }
+  .glow-green { box-shadow: 0 0 0 1px rgba(34,197,94,0.25),  0 0 20px rgba(34,197,94,0.10); }
+
+  /* Shimmer background for skeleton loaders */
+  .shimmer-bg {
+    background: linear-gradient(90deg, theme('colors.bg.surface') 25%, theme('colors.border.default') 50%, theme('colors.bg.surface') 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.6s linear infinite;
+  }
+
+  /* Panel slide-in (right panels) */
+  .panel-right {
+    @apply bg-bg-elevated border-l border-border-default;
+    animation: slide-in-right 0.25s ease-out;
+  }
+
+  /* Monospace label style */
+  .mono-label {
+    @apply font-mono text-[11px] tracking-wide text-text-tertiary;
+  }
+
+  /* Section header */
+  .section-label {
+    @apply text-[10px] font-semibold uppercase tracking-[0.15em] text-text-tertiary;
+  }
+
+  /* Tag pill */
+  .tag-pill {
+    @apply text-[10px] font-medium px-2 py-0.5 rounded bg-bg-surface-2 text-text-secondary border border-border-subtle;
+    transition: border-color 0.15s, color 0.15s;
+  }
+  .tag-pill:hover {
+    @apply border-brand-500 text-text-primary;
+  }
+
+  /* Dot-grid canvas background (for Cytoscape) */
+  .dot-grid {
+    background-image: radial-gradient(circle, theme('colors.border.subtle') 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+
+  /* Cytoscape container */
+  .cy-container {
+    @apply w-full h-full;
+  }
+
+  /* Sidebar nav item with active glow */
+  .nav-item {
+    @apply flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-medium transition-all duration-150 border border-transparent;
+  }
+  .nav-item:hover {
+    @apply text-text-primary bg-bg-surface-2 translate-x-0.5;
+  }
+  .nav-item.active {
+    @apply bg-brand-500/10 text-brand-500 border-brand-500/20;
+    box-shadow: inset 0 0 0 1px rgba(59,130,246,0.15), 0 0 12px rgba(59,130,246,0.08);
+  }
+
+  /* Severity row accent — left border flash */
+  .row-critical { border-left: 2px solid theme('colors.severity.critical'); }
+  .row-elevated { border-left: 2px solid theme('colors.severity.high'); }
+  .row-low      { border-left: 2px solid theme('colors.severity.info'); }
+
+  /* Primary button shimmer */
+  .btn-primary-shimmer {
+    position: relative;
+    overflow: hidden;
+  }
+  .btn-primary-shimmer::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.12) 50%, transparent 60%);
+    background-size: 200% 100%;
+    animation: shimmer 2.4s linear infinite;
+    pointer-events: none;
+  }
+
+  /* Scan line overlay effect */
+  .scan-overlay {
+    position: relative;
+    overflow: hidden;
+  }
+  .scan-overlay::before {
+    content: '';
+    position: absolute;
+    left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(to right, transparent, rgba(59,130,246,0.5), transparent);
+    animation: scan-line 3s linear infinite;
+    z-index: 1;
+    pointer-events: none;
+  }
+}

@@ -1,0 +1,27 @@
+# Environment files
+.env
+.env.*
+!.env.example
+!.env.prod.example
+
+# Local-disk attachment storage (docker-compose mounts a named volume over
+# this in the container; without compose, uploads land here on the host)
+data/attachments/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
