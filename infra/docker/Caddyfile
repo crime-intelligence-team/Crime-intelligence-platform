@@ -1,0 +1,19 @@
+# SITE_ADDRESS is a real domain (e.g. staging.example.com) for automatic
+# Let's Encrypt HTTPS, or "http://<server-ip>" for plain HTTP while you
+# only have an IP — Caddy's auto-HTTPS doesn't apply to bare IP addresses.
+{$SITE_ADDRESS:localhost}
+
+encode gzip
+
+@api {
+	path /api/v1/* /health
+}
+handle @api {
+	reverse_proxy api:8000
+}
+
+handle {
+	root * /srv
+	try_files {path} /index.html
+	file_server
+}
