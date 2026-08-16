@@ -69,6 +69,7 @@ docker exec cip-api python -m scripts.seed_phase4_test_data
 docker exec cip-api python -m scripts.seed_phase4_relationships
 docker exec cip-api python -m scripts.seed_phase6_priority
 docker exec cip-api python -m scripts.seed_phase6_merge
+docker exec cip-api python -m scripts.seed_demo_enrichment
 ```
 
 Seeded logins (`username_or_official_id` / password): `admin`/`ADM-0001`,

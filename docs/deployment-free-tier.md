@@ -72,7 +72,8 @@ docker run --rm \
   -e NEO4J_PASSWORD="<aura-password>" \
   crime_analytics-api python -m scripts.seed_dev_data
 # ...repeat for seed_phase4_test_data, seed_phase4_relationships,
-# seed_phase6_priority, seed_phase6_merge (same order as docs/deployment.md)
+# seed_phase6_priority, seed_phase6_merge, seed_demo_enrichment
+# (same order as docs/deployment.md)
 ```
 
 (`crime_analytics-api` is the image name `docker compose build` already
