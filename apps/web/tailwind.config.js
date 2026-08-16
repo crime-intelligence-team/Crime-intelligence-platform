@@ -31,6 +31,7 @@ export default {
           surface: '#10161D',
           'surface-2': '#161D26',
           elevated: '#1C2530',
+          'surface-hover': '#1C2530',
         },
         border: {
           subtle: '#232C38',
@@ -74,7 +75,47 @@ export default {
           6: '#FACC15',
           7: '#818CF8',
           8: '#4ADE80',
-        }
+        },
+        // "sentinel" is this app's grayscale text/border scale, used
+        // throughout components (Sidebar, TopBar, NetworkGraphView, every
+        // Governance* page, etc.) but never defined here — every
+        // text-sentinel-*/border-sentinel-* class was silently generating
+        // no CSS at all, which is what produced invisible text and
+        // transparent panels. Values match Tailwind's own slate scale —
+        // confirmed against NetworkGraphView's hardcoded Cytoscape hex
+        // colors (#64748b, #f1f5f9), which are exact slate-500/slate-100.
+        sentinel: {
+          50: '#F8FAFC',
+          100: '#F1F5F9',
+          200: '#E2E8F0',
+          300: '#CBD5E1',
+          400: '#94A3B8',
+          500: '#64748B',
+          600: '#475569',
+          700: '#334155',
+          800: '#1E293B',
+          900: '#0F172A',
+        },
+        // "surface" is the same panel-background scale as `bg`/`border`
+        // above, just under the key names most components actually use —
+        // aliased to identical hex values so both naming schemes render
+        // consistently.
+        surface: {
+          base: '#0B0F14',
+          card: '#10161D',
+          raised: '#1C2530',
+          hover: '#1C2530',
+          border: '#232C38',
+        },
+        // "accent" is this app's interactive/semantic color set (buttons,
+        // focus rings, isolate/danger actions) — also previously undefined.
+        accent: {
+          blue: '#3B82F6',
+          rose: '#F43F5E',
+          amber: '#F59E0B',
+          coral: '#F97066',
+          emerald: '#10B981',
+        },
       },
       keyframes: {
         'slide-in-right': {

@@ -61,6 +61,15 @@
     color: theme('colors.text.secondary') !important;
     border-color: theme('colors.border.default') !important;
   }
+  .sentinel-tooltip.leaflet-tooltip {
+    background: theme('colors.surface.card') !important;
+    color: theme('colors.sentinel.100') !important;
+    border: 1px solid theme('colors.surface.border') !important;
+    box-shadow: none;
+  }
+  .sentinel-tooltip.leaflet-tooltip::before {
+    border-top-color: theme('colors.surface.card') !important;
+  }
 }
 
 /* ── Keyframe Animations ──────────────────────────────────────────────────── */
