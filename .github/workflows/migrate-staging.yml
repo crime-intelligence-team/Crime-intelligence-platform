@@ -120,3 +120,4 @@ jobs:
           python -m scripts.seed_phase4_relationships
           python -m scripts.seed_phase6_priority
           python -m scripts.seed_phase6_merge
+          python -m scripts.seed_demo_enrichment
