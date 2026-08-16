@@ -16,6 +16,10 @@ name: Migrate staging DB
 on:
   workflow_dispatch:
     inputs:
+      wipe:
+        description: "DESTRUCTIVE: drop all existing Postgres tables and delete all Neo4j nodes/relationships before migrating"
+        type: boolean
+        default: false
       run_seeds:
         description: "Also load demo seed data (skip if loading real content instead)"
         type: boolean
@@ -42,6 +46,57 @@ jobs:
 
       - name: Install dependencies
         run: pip install -r requirements.txt
+
+      - name: Wipe existing data
+        if: ${{ inputs.wipe }}
+        run: |
+          python -c "
+          from sqlalchemy import create_engine, text
+          import os
+          engine = create_engine(os.environ['DATABASE_URL'])
+          with engine.connect() as conn:
+              conn.execute(text('''
+                  DO \$\$ DECLARE r RECORD;
+                  BEGIN
+                      FOR r IN (
+                          SELECT c.relname AS relname
+                          FROM pg_class c
+                          JOIN pg_namespace n ON n.oid = c.relnamespace
+                          WHERE n.nspname = 'public'
+                            AND c.relkind = 'r'
+                            AND NOT EXISTS (
+                                SELECT 1 FROM pg_depend d
+                                WHERE d.objid = c.oid AND d.deptype = 'e'
+                            )
+                      ) LOOP
+                          EXECUTE 'DROP TABLE IF EXISTS public.' || quote_ident(r.relname) || ' CASCADE';
+                      END LOOP;
+
+                      FOR r IN (
+                          SELECT t.typname AS relname
+                          FROM pg_type t
+                          JOIN pg_namespace n ON n.oid = t.typnamespace
+                          WHERE n.nspname = 'public'
+                            AND t.typtype = 'e'
+                            AND NOT EXISTS (
+                                SELECT 1 FROM pg_depend d
+                                WHERE d.objid = t.oid AND d.deptype = 'e'
+                            )
+                      ) LOOP
+                          EXECUTE 'DROP TYPE IF EXISTS public.' || quote_ident(r.relname) || ' CASCADE';
+                      END LOOP;
+                  END \$\$;
+              '''))
+              conn.commit()
+          "
+          python -c "
+          from neo4j import GraphDatabase
+          import os
+          driver = GraphDatabase.driver(os.environ['NEO4J_URI'], auth=(os.environ['NEO4J_USER'], os.environ['NEO4J_PASSWORD']))
+          with driver.session() as session:
+              session.run('MATCH (n) DETACH DELETE n')
+          driver.close()
+          "
 
       - name: Enable PostGIS extension
         run: |
