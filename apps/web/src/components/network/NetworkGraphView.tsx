@@ -95,17 +95,17 @@ function useGraph() {
     try {
       const page = await networkApi.search('')
       const ents = page.items
+      const relLists = await Promise.all(ents.map(e => networkApi.entityRelationships(e.id).then(p => p.items)))
       const seen = new Set<string>()
       const all: RelationshipOut[] = []
-      for (const e of ents) {
-        const rels = await networkApi.entityRelationships(e.id).then(p => p.items)
-        for (const r of rels) {
+      ents.forEach((e, i) => {
+        for (const r of relLists[i]) {
           if (r.source_entity.id !== e.id && r.target_entity.id !== e.id) continue
           if (seen.has(r.id)) continue
           seen.add(r.id)
           all.push(r)
         }
-      }
+      })
       setEntities(ents)
       setRelationships(all)
     } catch (err) {
