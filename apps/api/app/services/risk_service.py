@@ -7,7 +7,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models.base import band_for_score
-from app.models.entities import Address, Officer, Zone, ZoneRiskScore
+from app.models.entities import Address, Case, Officer, Zone, ZoneRiskScore
 from app.schemas.common import ClassificationLevel, Confidence, ConfidenceBand
 from app.schemas.map import ZoneRiskOut, ZoneTopFactor
 from app.services.district_service import get_accessible_district_ids
@@ -15,6 +15,13 @@ from app.utils.geometry import geometry_to_geojson
 
 MIN_ADDRESS_FLOOR = 5
 REFERENCE_DENSITY_PER_KM2 = 1000.0
+
+# Active (non-closed) cases are the strongest available risk signal — a zone
+# with real casework outweighs one that's merely address-dense. 3+ active
+# cases saturates the case component; below that it scales linearly.
+CASE_REFERENCE_COUNT = 3
+CASE_WEIGHT = 0.7
+ADDRESS_WEIGHT = 0.3
 
 
 class ZoneNotFoundError(Exception):
@@ -29,14 +36,7 @@ def _interpretation_for_score(score: int) -> str:
     return "priority_watch"
 
 
-def _score_to_output(zone: Zone, score: int, band: ConfidenceBand, description: str) -> ZoneRiskOut:
-    top_factors = [
-        ZoneTopFactor(
-            name="address_density",
-            weight=1.0,
-            description=description,
-        )
-    ]
+def _score_to_output(zone: Zone, score: int, band: ConfidenceBand, top_factors: list[ZoneTopFactor]) -> ZoneRiskOut:
     interpretation = _interpretation_for_score(score)
     return ZoneRiskOut(
         id=str(zone.id),
@@ -53,6 +53,19 @@ def _score_to_output(zone: Zone, score: int, band: ConfidenceBand, description: 
     )
 
 
+def _active_case_count(db: Session, zone_geom) -> int:
+    """Active (status != closed) cases whose linked address falls inside the
+    zone — same ST_Contains containment case_service._resolve_zone_id uses
+    to derive a case's zone, just counted in aggregate here."""
+    return (
+        db.query(func.count(Case.id))
+        .join(Address, Case.address_id == Address.id)
+        .filter(Case.status != Case.STATUS_CLOSED)
+        .filter(geo_func.ST_Contains(zone_geom, Address.geocoded_point))
+        .scalar()
+    ) or 0
+
+
 def compute_zone_score(db: Session, zone: Zone) -> ZoneRiskOut:
     """Pure computation — no DB writes. Returns the provisional score for a zone."""
     if zone.geometry is None:
@@ -60,7 +73,13 @@ def compute_zone_score(db: Session, zone: Zone) -> ZoneRiskOut:
             zone,
             score=0,
             band=ConfidenceBand.UNCONFIRMED,
-            description="Zone geometry missing; score cannot be computed.",
+            top_factors=[
+                ZoneTopFactor(
+                    name="address_density",
+                    weight=1.0,
+                    description="Zone geometry missing; score cannot be computed.",
+                )
+            ],
         )
 
     zone_geom = zone.geometry
@@ -73,22 +92,41 @@ def compute_zone_score(db: Session, zone: Zone) -> ZoneRiskOut:
     area_km2 = (area_m2 or 0.0) / 1_000_000.0
 
     density = (address_count or 0) / area_km2 if area_km2 > 0 else 0.0
-    score = min(100, round(density / REFERENCE_DENSITY_PER_KM2 * 100))
+    address_component = min(100, round(density / REFERENCE_DENSITY_PER_KM2 * 100))
+
+    active_case_count = _active_case_count(db, zone_geom)
+    case_component = min(100, round(active_case_count / CASE_REFERENCE_COUNT * 100))
+
+    score = min(100, round(ADDRESS_WEIGHT * address_component + CASE_WEIGHT * case_component))
 
     if (address_count or 0) < MIN_ADDRESS_FLOOR:
         band = ConfidenceBand.UNCONFIRMED
     else:
         band = ConfidenceBand(band_for_score(score).value)
-        if band == ConfidenceBand.VERIFIED:
+        # Address density alone is a weak proxy — cap at probable unless
+        # there's at least one real active case backing the score up.
+        if band == ConfidenceBand.VERIFIED and active_case_count == 0:
             band = ConfidenceBand.PROBABLE
 
-    description = (
-        "Address density (addresses per km²) is the sole spatial input for this "
-        f"score ({address_count} addresses in {area_km2:.2f} km²). "
-        "Provisional density-based signal — no incident data wired yet; "
-        "confidence capped at probable."
-    )
-    return _score_to_output(zone, score=score, band=band, description=description)
+    top_factors = [
+        ZoneTopFactor(
+            name="active_case_count",
+            weight=CASE_WEIGHT,
+            description=(
+                f"{active_case_count} active (non-closed) case(s) geolocated in this zone — "
+                "the primary risk signal."
+            ),
+        ),
+        ZoneTopFactor(
+            name="address_density",
+            weight=ADDRESS_WEIGHT,
+            description=(
+                f"Address density secondary signal: {address_count} addresses in "
+                f"{area_km2:.2f} km²."
+            ),
+        ),
+    ]
+    return _score_to_output(zone, score=score, band=band, top_factors=top_factors)
 
 
 def persist_zone_score(db: Session, zone: Zone) -> ZoneRiskOut:
